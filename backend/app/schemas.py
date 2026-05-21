@@ -121,3 +121,34 @@ class SimilarArticleItem(BaseModel):
 class SimilarArticlesResponse(BaseModel):
     article_id: int
     items: list[SimilarArticleItem]
+
+
+class CompareArticlesRequest(BaseModel):
+    article_id_1: int
+    article_id_2: int
+
+
+class ArticleComparisonResult(BaseModel):
+    same_event_probability: float
+    fact_overlap: float
+    main_common_facts: list[str]
+    differences: list[str]
+    source_1_framing: str
+    source_2_framing: str
+    source_1_sympathy: str
+    source_2_sympathy: str
+    source_1_criticism: str
+    source_2_criticism: str
+    narrative_difference: str
+    conclusion: str
+
+
+class CompareWithSimilarItem(BaseModel):
+    article_id: int
+    similarity_score: float
+    comparison: ArticleComparisonResult
+
+
+class CompareWithSimilarResponse(BaseModel):
+    article_id: int
+    items: list[CompareWithSimilarItem]

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.analysis import AnalysisError, analyze_article
+from app.comparison import ComparisonError, compare_articles, compare_with_similar
 from app.database import get_db
 from app.ingestion.service import ingest_source_period, query_articles, supported_sources
 from app.config import settings
@@ -20,7 +21,10 @@ from app.schemas import (
     ArticleListItem,
     ArticleListResponse,
     ArticleAnalysisResponse,
+    ArticleComparisonResult,
     EmbedAllResponse,
+    CompareArticlesRequest,
+    CompareWithSimilarResponse,
     IngestSourcePeriodRequest,
     IngestSourcePeriodResponse,
     LlmTestRequest,
@@ -192,6 +196,33 @@ def similar_articles_endpoint(
     return SimilarArticlesResponse(article_id=article_id, items=items)
 
 
+@router.post("/compare/articles", response_model=ArticleComparisonResult)
+def compare_articles_endpoint(
+    payload: CompareArticlesRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Сравнивает две статьи через локальную LLM."""
+
+    try:
+        return compare_articles(db, payload.article_id_1, payload.article_id_2)
+    except ComparisonError as exc:
+        raise _comparison_http_error(exc) from exc
+
+
+@router.get("/articles/{article_id}/compare-with-similar", response_model=CompareWithSimilarResponse)
+def compare_with_similar_endpoint(
+    article_id: int,
+    db: Session = Depends(get_db),
+) -> CompareWithSimilarResponse:
+    """Сравнивает статью с top-3 похожими материалами из Qdrant."""
+
+    try:
+        items = compare_with_similar(db, article_id)
+    except ComparisonError as exc:
+        raise _comparison_http_error(exc) from exc
+    return CompareWithSimilarResponse(article_id=article_id, items=items)
+
+
 def _analysis_response(analysis: ArticleAnalysis) -> ArticleAnalysisResponse:
     """Преобразует ORM-модель анализа в API-ответ."""
 
@@ -253,3 +284,14 @@ def _vector_http_error(exc: VectorError) -> HTTPException:
     if "Сначала нужно выполнить" in message:
         return HTTPException(status_code=400, detail=message)
     return HTTPException(status_code=503, detail=message)
+
+
+def _comparison_http_error(exc: ComparisonError) -> HTTPException:
+    message = str(exc)
+    if "не найдена" in message:
+        return HTTPException(status_code=404, detail=message)
+    if "сначала нужно выполнить" in message:
+        return HTTPException(status_code=400, detail=message)
+    if "Ollama" in message or "Qdrant" in message:
+        return HTTPException(status_code=503, detail=message)
+    return HTTPException(status_code=422, detail=message)

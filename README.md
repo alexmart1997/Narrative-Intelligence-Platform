@@ -257,6 +257,27 @@ curl "http://localhost:8000/articles/1/similar?limit=10"
 
 Embedding создается по `title + short_summary + text[:3000]`, а в Qdrant payload сохраняет `article_id`, `title`, `source_name`, `published_at`, `language`. Это нужно для сравнения освещения одного события разными изданиями.
 
+## Сравнение статей
+
+Сравнить две статьи через Ollama:
+
+```bash
+curl -X POST http://localhost:8000/compare/articles \
+  -H "Content-Type: application/json" \
+  -d '{
+    "article_id_1": 1,
+    "article_id_2": 2
+  }'
+```
+
+Сравнить статью с top-3 похожими материалами из Qdrant:
+
+```bash
+curl http://localhost:8000/articles/1/compare-with-similar
+```
+
+Перед сравнением у статей должен быть сохраненный LLM-анализ. Для `compare-with-similar` также нужны embeddings в Qdrant.
+
 ### Ограничения MVP-парсеров
 
 - Сайты могут менять HTML, поэтому часть селекторов со временем потребуется обновлять.
