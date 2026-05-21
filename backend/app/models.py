@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import enum
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import DateTime, Enum, Float, ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -27,16 +30,28 @@ class Sentiment(str, enum.Enum):
     mixed = "mixed"
 
 
+class MaterialType(str, enum.Enum):
+    """Тип текстового материала источника."""
+
+    news = "news"
+    article = "article"
+    analytics = "analytics"
+    opinion = "opinion"
+    interview = "interview"
+    unknown = "unknown"
+
+
 class Source(Base):
     """Источник публикаций: СМИ, сайт, канал или другой поставщик текстов."""
 
     __tablename__ = "sources"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[Optional[str]] = mapped_column(String(50), unique=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     url: Mapped[str] = mapped_column(Text, nullable=False)
     country: Mapped[str] = mapped_column(String(120), nullable=False)
-    political_orientation: Mapped[str | None] = mapped_column(String(120))
+    political_orientation: Mapped[Optional[str]] = mapped_column(String(120))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -58,6 +73,14 @@ class Article(Base):
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     language: Mapped[str] = mapped_column(String(16), nullable=False)
+    section: Mapped[Optional[str]] = mapped_column(String(120))
+    author: Mapped[Optional[str]] = mapped_column(String(255))
+    material_type: Mapped[MaterialType] = mapped_column(
+        Enum(MaterialType, name="material_type"),
+        nullable=False,
+        default=MaterialType.unknown,
+        server_default=MaterialType.unknown.value,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -67,7 +90,7 @@ class Article(Base):
     source: Mapped[Source] = relationship(back_populates="articles")
     entities: Mapped[list["ArticleEntity"]] = relationship(back_populates="article")
     relations: Mapped[list["Relation"]] = relationship(back_populates="article")
-    analysis: Mapped["ArticleAnalysis | None"] = relationship(back_populates="article")
+    analysis: Mapped[Optional["ArticleAnalysis"]] = relationship(back_populates="article")
     narrative_evidence: Mapped[list["NarrativeEvidence"]] = relationship(back_populates="article")
 
 
@@ -99,8 +122,8 @@ class ArticleEntity(Base):
         ForeignKey("entities.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    role: Mapped[str | None] = mapped_column(String(120))
-    importance_score: Mapped[float | None] = mapped_column(Float)
+    role: Mapped[Optional[str]] = mapped_column(String(120))
+    importance_score: Mapped[Optional[float]] = mapped_column(Float)
 
     article: Mapped[Article] = relationship(back_populates="entities")
     entity: Mapped[Entity] = relationship()
@@ -145,8 +168,8 @@ class ArticleAnalysis(Base):
     sentiment: Mapped[Sentiment] = mapped_column(Enum(Sentiment, name="sentiment"), nullable=False)
     stance: Mapped[str] = mapped_column(Text, nullable=False)
     framing: Mapped[str] = mapped_column(Text, nullable=False)
-    sympathizes_with: Mapped[str | None] = mapped_column(Text)
-    criticizes: Mapped[str | None] = mapped_column(Text)
+    sympathizes_with: Mapped[Optional[str]] = mapped_column(Text)
+    criticizes: Mapped[Optional[str]] = mapped_column(Text)
     narrative_hypothesis: Mapped[str] = mapped_column(Text, nullable=False)
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

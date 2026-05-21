@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from app.api import router
 from app.config import settings
 
 
@@ -8,6 +9,8 @@ app = FastAPI(
     description="Локальный API для прототипа Narrative Intelligence Platform.",
     version="0.1.0",
 )
+
+app.include_router(router)
 
 
 @app.get("/health")

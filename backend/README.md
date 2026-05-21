@@ -30,3 +30,19 @@ Healthcheck:
 ```bash
 curl http://localhost:8000/health
 ```
+
+## Загрузка материалов
+
+```bash
+curl http://localhost:8000/ingest/sources
+```
+
+```bash
+curl -X POST http://localhost:8000/ingest/source-period \
+  -H "Content-Type: application/json" \
+  -d '{"source_code":"rbc","date_from":"2026-05-01","date_to":"2026-05-30","limit":500}'
+```
+
+```bash
+curl "http://localhost:8000/articles?source_code=rbc&limit=20"
+```
