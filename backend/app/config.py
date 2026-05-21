@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     qdrant_host: str = "localhost"
     qdrant_port: int = 6333
     ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen3:4b"
 
     @property
     def database_url(self) -> str:

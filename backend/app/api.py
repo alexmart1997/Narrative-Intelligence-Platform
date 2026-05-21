@@ -8,11 +8,15 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.ingestion.service import ingest_source_period, query_articles, supported_sources
+from app.config import settings
+from app.llm import LlmError, call_llm
 from app.schemas import (
     ArticleListItem,
     ArticleListResponse,
     IngestSourcePeriodRequest,
     IngestSourcePeriodResponse,
+    LlmTestRequest,
+    LlmTestResponse,
     SourceInfo,
 )
 
@@ -97,3 +101,15 @@ def list_articles(
         for article in articles
     ]
     return ArticleListResponse(items=items, count=len(items))
+
+
+@router.post("/llm/test", response_model=LlmTestResponse)
+def test_llm(payload: LlmTestRequest) -> LlmTestResponse:
+    """Проверяет связь backend с локальной моделью Ollama."""
+
+    try:
+        answer = call_llm(payload.prompt)
+    except LlmError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return LlmTestResponse(model=settings.ollama_model, response=answer)

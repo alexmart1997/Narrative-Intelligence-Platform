@@ -87,13 +87,41 @@ npm run dev
 
 ## Ollama
 
-Установите и запустите Ollama локально. Пример загрузки модели:
+Backend обращается только к локальному Ollama API, платные API не используются.
+
+1. Установите Ollama: скачайте приложение с официального сайта Ollama и запустите его.
+
+2. Скачайте локальную модель:
 
 ```bash
-ollama pull llama3.1:8b
+ollama pull qwen3:4b
 ```
 
-Backend пока только хранит адрес Ollama в конфигурации. Интеграция с LLM будет добавлена следующими шагами.
+3. Проверьте настройки в `.env`:
+
+```bash
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=qwen3:4b
+```
+
+4. Запустите backend:
+
+```bash
+cd backend
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+5. Проверьте `/llm/test`:
+
+```bash
+curl -X POST http://localhost:8000/llm/test \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Кратко объясни, что такое фрейминг в политических новостях."
+  }'
+```
+
+Если Ollama не запущен или модель не скачана, backend вернет понятную ошибку с HTTP-статусом `503`.
 
 ## Локальные сервисы
 

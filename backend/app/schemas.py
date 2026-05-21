@@ -53,3 +53,12 @@ class ArticleListItem(BaseModel):
 class ArticleListResponse(BaseModel):
     items: list[ArticleListItem]
     count: int
+
+
+class LlmTestRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, examples=["Кратко объясни, что такое фрейминг в политических новостях."])
+
+
+class LlmTestResponse(BaseModel):
+    model: str
+    response: str
