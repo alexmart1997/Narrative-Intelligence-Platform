@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 revision: str = "0001_initial_schema"
@@ -17,7 +18,7 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-entity_type = sa.Enum(
+entity_type = postgresql.ENUM(
     "person",
     "organization",
     "country",
@@ -25,8 +26,16 @@ entity_type = sa.Enum(
     "concept",
     "other",
     name="entity_type",
+    create_type=False,
 )
-sentiment = sa.Enum("positive", "negative", "neutral", "mixed", name="sentiment")
+sentiment = postgresql.ENUM(
+    "positive",
+    "negative",
+    "neutral",
+    "mixed",
+    name="sentiment",
+    create_type=False,
+)
 
 
 def upgrade() -> None:

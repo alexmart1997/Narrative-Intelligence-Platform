@@ -82,6 +82,12 @@ class RbcAdapter(NewsSourceAdapter):
         return self.clean_text(value)
 
     def _published_at(self, soup: BeautifulSoup) -> datetime | None:
+        itemprop_date = soup.find("meta", attrs={"itemprop": "datePublished"})
+        if itemprop_date and itemprop_date.get("content"):
+            parsed = self.parse_datetime(str(itemprop_date["content"]))
+            if parsed:
+                return parsed
+
         for item in self.json_ld_items(soup):
             value = item.get("datePublished") or item.get("dateCreated")
             parsed = self.parse_datetime(str(value) if value else None)
@@ -103,6 +109,9 @@ class RbcAdapter(NewsSourceAdapter):
             paragraphs = [item for item in paragraphs if item]
             if paragraphs:
                 break
+        itemprop_body = soup.find(attrs={"itemprop": "articleBody"})
+        if not paragraphs and itemprop_body and itemprop_body.get("content"):
+            paragraphs = [self.clean_text(str(itemprop_body["content"]))]
         preview = self.meta_content(soup, "og:description", "description")
         if preview:
             paragraphs.insert(0, self.clean_text(preview))

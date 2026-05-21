@@ -71,6 +71,8 @@ class BbcAdapter(NewsSourceAdapter):
             href = self.absolute_url(str(tag["href"]))
             if not href.startswith("https://www.bbc.com/news/"):
                 continue
+            if "/news/articles/" not in href:
+                continue
             if "/av/" in href or "/live/" in href:
                 continue
             result.append(href)

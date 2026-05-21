@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 
 from bs4 import BeautifulSoup
@@ -71,7 +72,9 @@ class CnnAdapter(NewsSourceAdapter):
             href = self.absolute_url(str(tag["href"]))
             if not href.startswith("https://edition.cnn.com/"):
                 continue
-            if "/videos/" in href or "/audio/" in href:
+            if not re.search(r"/20\d{2}/\d{2}/\d{2}/", href):
+                continue
+            if "/videos/" in href or "/video/" in href or "/audio/" in href or "/gallery/" in href:
                 continue
             if any(part in href for part in ("/politics/", "/world/", "/us/", "/opinions/", "/analysis/")):
                 result.append(href)
