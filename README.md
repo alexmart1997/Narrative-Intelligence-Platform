@@ -80,6 +80,7 @@ curl http://localhost:8000/health
 
 ```bash
 cd frontend
+cp .env.local.example .env.local
 npm install
 ```
 

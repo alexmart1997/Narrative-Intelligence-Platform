@@ -1,0 +1,267 @@
+.page {
+  min-height: 100vh;
+  padding: 32px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  max-width: 1280px;
+  margin: 0 auto 24px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 42px;
+  line-height: 1;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) minmax(160px, 180px) minmax(240px, 1fr) auto;
+  gap: 16px;
+  align-items: end;
+  max-width: 1280px;
+  margin: 0 auto 20px;
+  padding: 16px;
+  border: 1px solid #d9dee8;
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.filters label {
+  display: grid;
+  gap: 8px;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.filters select,
+.filters input {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid #cfd6e3;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--foreground);
+  font: inherit;
+}
+
+.searchLabel {
+  min-width: 0;
+}
+
+.primaryButton,
+.secondaryButton,
+.actions button {
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid #cfd6e3;
+  border-radius: 8px;
+  background: #fff;
+  color: #1f2937;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primaryButton {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.primaryButton:disabled,
+.actions button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.error,
+.loading,
+.empty {
+  max-width: 1280px;
+  margin: 0 auto 20px;
+  padding: 14px 16px;
+  border-radius: 8px;
+}
+
+.error {
+  border: 1px solid #f5b6b6;
+  background: #fff1f1;
+  color: #9f1239;
+}
+
+.loading,
+.empty {
+  border: 1px solid #d9dee8;
+  background: #fff;
+  color: var(--muted);
+}
+
+.content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: 20px;
+  max-width: 1280px;
+  margin: 0 auto;
+  align-items: start;
+}
+
+.list {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.card,
+.graphPanel {
+  border: 1px solid #d9dee8;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 14px 40px rgb(15 23 42 / 6%);
+}
+
+.card {
+  padding: 20px;
+}
+
+.cardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.cardMeta span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: #eef2f7;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.card p {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.actions button:hover,
+.secondaryButton:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.similar {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e5eaf2;
+}
+
+.similar h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.similar ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.graphPanel {
+  position: sticky;
+  top: 24px;
+  overflow: hidden;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid #e5eaf2;
+}
+
+.panelHeader h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.panelHint {
+  margin: 0;
+  padding: 16px;
+  color: var(--muted);
+}
+
+.graphSummary p {
+  margin: 0;
+  padding: 16px 16px 0;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.graphSummary pre {
+  max-height: 70vh;
+  margin: 0;
+  padding: 16px;
+  overflow: auto;
+  color: #1f2937;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 940px) {
+  .page {
+    padding: 20px;
+  }
+
+  .header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .filters,
+  .content {
+    grid-template-columns: 1fr;
+  }
+
+  .graphPanel {
+    position: static;
+  }
+}
