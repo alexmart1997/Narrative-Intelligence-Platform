@@ -18,7 +18,7 @@ type ActionState = {
   action: ArticleAction;
 } | null;
 
-type ArticleAction = "analyze" | "graph" | "similar";
+type ArticleAction = "analyze" | "compare" | "graph" | "similar";
 
 export default function ArticlesPage() {
   const router = useRouter();
@@ -73,6 +73,10 @@ export default function ArticlesPage() {
     router.push(`/articles/${articleId}/graph`);
   }
 
+  function handleCompare(articleId: number) {
+    router.push(`/articles/${articleId}/compare`);
+  }
+
   async function handleFindSimilar(articleId: number) {
     setActionState({ articleId, action: "similar" });
     setError(null);
@@ -91,6 +95,7 @@ export default function ArticlesPage() {
       return "Loading...";
     }
     if (action === "analyze") return "Analyze";
+    if (action === "compare") return "Compare";
     if (action === "graph") return "Open graph";
     return "Find similar";
   }
@@ -176,6 +181,12 @@ export default function ArticlesPage() {
                     disabled={actionState !== null}
                   >
                     {actionLabel(article.id, "graph")}
+                  </button>
+                  <button
+                    onClick={() => handleCompare(article.id)}
+                    disabled={actionState !== null}
+                  >
+                    {actionLabel(article.id, "compare")}
                   </button>
                   <button
                     onClick={() => handleFindSimilar(article.id)}

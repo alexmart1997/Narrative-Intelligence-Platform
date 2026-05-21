@@ -60,6 +60,32 @@ export type ArticleGraphResponse = {
   edges: GraphEdge[];
 };
 
+export type ArticleComparisonResult = {
+  same_event_probability: number;
+  fact_overlap: number;
+  main_common_facts: string[];
+  differences: string[];
+  source_1_framing: string;
+  source_2_framing: string;
+  source_1_sympathy: string;
+  source_2_sympathy: string;
+  source_1_criticism: string;
+  source_2_criticism: string;
+  narrative_difference: string;
+  conclusion: string;
+};
+
+export type CompareWithSimilarItem = {
+  article_id: number;
+  similarity_score: number;
+  comparison: ArticleComparisonResult;
+};
+
+export type CompareWithSimilarResponse = {
+  article_id: number;
+  items: CompareWithSimilarItem[];
+};
+
 type ArticleFilters = {
   sourceCode?: string;
   language?: string;
@@ -112,4 +138,8 @@ export async function getArticleGraph(articleId: number): Promise<ArticleGraphRe
 
 export async function getSimilarArticles(articleId: number): Promise<SimilarArticlesResponse> {
   return request<SimilarArticlesResponse>(`/articles/${articleId}/similar?limit=10`);
+}
+
+export async function compareWithSimilar(articleId: number): Promise<CompareWithSimilarResponse> {
+  return request<CompareWithSimilarResponse>(`/articles/${articleId}/compare-with-similar`);
 }
