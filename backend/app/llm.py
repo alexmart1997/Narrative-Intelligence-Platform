@@ -18,7 +18,9 @@ def call_llm(prompt: str) -> str:
     }
 
     try:
-        response = httpx.post(url, json=payload, timeout=120.0)
+        # Для локального Ollama не используем proxy из окружения:
+        # иначе httpx может отправить localhost-запрос через внешний proxy.
+        response = httpx.post(url, json=payload, timeout=120.0, trust_env=False)
         response.raise_for_status()
     except httpx.ConnectError as exc:
         raise LlmError("Ollama не запущен или недоступен по адресу из OLLAMA_BASE_URL") from exc
