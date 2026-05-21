@@ -279,6 +279,62 @@ curl http://localhost:8000/articles/1/compare-with-similar
 
 Перед сравнением у статей должен быть сохраненный LLM-анализ. Для `compare-with-similar` также нужны embeddings в Qdrant.
 
+## Event Intelligence Layer
+
+Слой событий объединяет несколько статей в одно событие. Он работает поверх уже существующего анализа статей, embeddings в Qdrant и локального Ollama.
+
+Перед запуском event matching у статей должен быть LLM-анализ и embedding:
+
+```bash
+curl -X POST http://localhost:8000/articles/1/analyze
+curl -X POST http://localhost:8000/articles/1/embed
+```
+
+Определить событие для одной статьи:
+
+```bash
+curl -X POST http://localhost:8000/articles/1/detect-event
+```
+
+Определить события для всех проанализированных статей:
+
+```bash
+curl -X POST http://localhost:8000/events/detect-all
+```
+
+Посмотреть события:
+
+```bash
+curl "http://localhost:8000/events"
+```
+
+Фильтры событий:
+
+```bash
+curl "http://localhost:8000/events?event_type=politics&q=Молдавия"
+curl "http://localhost:8000/events?date_from=2026-05-01&date_to=2026-05-30"
+```
+
+Посмотреть одно событие:
+
+```bash
+curl http://localhost:8000/events/1
+```
+
+Граф события:
+
+```bash
+curl http://localhost:8000/graph/event/1
+```
+
+Граф статьи можно расширить связанными материалами:
+
+```bash
+curl "http://localhost:8000/graph/article/1?include_related=true&limit_related=10"
+```
+
+В расширенный граф добавляются статьи того же события, похожие статьи из Qdrant и статьи с похожей `narrative_hypothesis`. Связи: `same_event_as`, `similar_to`, `shares_narrative`.
+
 ## Граф статьи
 
 Создать тестовые данные для просмотра графа без реальных новостей:

@@ -46,3 +46,35 @@ curl -X POST http://localhost:8000/ingest/source-period \
 ```bash
 curl "http://localhost:8000/articles?source_code=rbc&limit=20"
 ```
+
+## События
+
+После LLM-анализа и embedding статьи можно определить событие:
+
+```bash
+curl -X POST http://localhost:8000/articles/1/detect-event
+```
+
+Запустить поиск событий для всех проанализированных статей:
+
+```bash
+curl -X POST http://localhost:8000/events/detect-all
+```
+
+Список событий с фильтрами:
+
+```bash
+curl "http://localhost:8000/events?event_type=politics&q=Молдавия"
+```
+
+Граф события:
+
+```bash
+curl http://localhost:8000/graph/event/1
+```
+
+Расширенный граф статьи со связанными материалами:
+
+```bash
+curl "http://localhost:8000/graph/article/1?include_related=true&limit_related=10"
+```

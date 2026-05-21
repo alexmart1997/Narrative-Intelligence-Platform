@@ -204,3 +204,55 @@ class NarrativeDetailResponse(BaseModel):
     frame: str
     created_at: datetime
     evidence: list[NarrativeEvidenceItem]
+
+
+class EventDetectionResponse(BaseModel):
+    event_id: int
+    title: str
+    article_id: int
+
+
+class EventDetectAllResponse(BaseModel):
+    total: int
+    detected: int
+    errors: int
+
+
+class EventArticleItem(BaseModel):
+    article_id: int
+    article_title: str
+    source_name: str
+    same_event_probability: float
+    evidence_text: Optional[str]
+    published_at: datetime
+
+
+class EventEntityItem(BaseModel):
+    entity_id: int
+    name: str
+    type: str
+    role: Optional[str]
+    importance_score: Optional[float]
+
+
+class EventListItem(BaseModel):
+    id: int
+    title: str
+    description: str
+    event_date: Optional[datetime]
+    event_type: Optional[str]
+    location: Optional[str]
+    article_count: int
+    created_at: datetime
+
+
+class EventDetailResponse(BaseModel):
+    id: int
+    title: str
+    description: str
+    event_date: Optional[datetime]
+    event_type: Optional[str]
+    location: Optional[str]
+    created_at: datetime
+    articles: list[EventArticleItem]
+    entities: list[EventEntityItem]

@@ -10,11 +10,18 @@ from sqlalchemy.orm import Session
 from app.analysis import AnalysisError, analyze_article
 from app.comparison import ComparisonError, compare_articles, compare_with_similar
 from app.database import get_db
+from app.events import (
+    EventDetectionError,
+    build_event_graph,
+    detect_all_events,
+    detect_event_for_article,
+    query_events,
+)
 from app.graph import GraphError, build_article_graph
 from app.ingestion.service import ingest_source_period, query_articles, supported_sources
 from app.config import settings
 from app.llm import LlmError, call_llm
-from app.models import ArticleAnalysis, Narrative
+from app.models import ArticleAnalysis, Event, Narrative
 from app.narratives import NarrativeDiscoveryError, build_narrative_graph, discover_narratives
 from app.schemas import (
     AnalysisEntityItem,
@@ -32,6 +39,12 @@ from app.schemas import (
     IngestSourcePeriodResponse,
     LlmTestRequest,
     LlmTestResponse,
+    EventDetectAllResponse,
+    EventDetectionResponse,
+    EventArticleItem,
+    EventDetailResponse,
+    EventEntityItem,
+    EventListItem,
     NarrativeDetailResponse,
     NarrativeDiscoveryResponse,
     NarrativeEvidenceItem,
@@ -233,16 +246,96 @@ def compare_with_similar_endpoint(
 @router.get("/graph/article/{article_id}", response_model=ArticleGraphResponse)
 def article_graph_endpoint(
     article_id: int,
+    include_related: bool = False,
+    limit_related: int = Query(default=10, ge=1, le=50),
     db: Session = Depends(get_db),
 ) -> dict[str, list[dict]]:
     """Возвращает граф статьи, источника, сущностей, отношений и нарратива."""
 
     try:
-        return build_article_graph(db, article_id)
+        return build_article_graph(
+            db,
+            article_id,
+            include_related=include_related,
+            limit_related=limit_related,
+        )
     except GraphError as exc:
         message = str(exc)
         status_code = 404 if message == "Статья не найдена" else 400
         raise HTTPException(status_code=status_code, detail=message) from exc
+
+
+@router.post("/articles/{article_id}/detect-event", response_model=EventDetectionResponse)
+def detect_article_event_endpoint(
+    article_id: int,
+    db: Session = Depends(get_db),
+) -> EventDetectionResponse:
+    """Определяет событие для одной статьи и связывает ее с event."""
+
+    try:
+        event = detect_event_for_article(db, article_id)
+    except EventDetectionError as exc:
+        raise _event_http_error(exc) from exc
+    return EventDetectionResponse(event_id=event.id, title=event.title, article_id=article_id)
+
+
+@router.post("/events/detect-all", response_model=EventDetectAllResponse)
+def detect_all_events_endpoint(db: Session = Depends(get_db)) -> dict[str, int]:
+    """Запускает event matching для всех проанализированных статей."""
+
+    return detect_all_events(db)
+
+
+@router.get("/events", response_model=list[EventListItem])
+def list_events(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    event_type: Optional[str] = None,
+    q: Optional[str] = None,
+    db: Session = Depends(get_db),
+) -> list[EventListItem]:
+    """Возвращает события с фильтрами по дате, типу и поисковой строке."""
+
+    events = query_events(db, date_from=date_from, date_to=date_to, event_type=event_type, q=q)
+    return [
+        EventListItem(
+            id=event.id,
+            title=event.title,
+            description=event.description,
+            event_date=event.event_date,
+            event_type=event.event_type,
+            location=event.location,
+            article_count=len(event.articles),
+            created_at=event.created_at,
+        )
+        for event in events
+    ]
+
+
+@router.get("/events/{event_id}", response_model=EventDetailResponse)
+def get_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+) -> EventDetailResponse:
+    """Возвращает событие, связанные статьи и главные сущности."""
+
+    event = db.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Событие не найдено")
+    return _event_response(event)
+
+
+@router.get("/graph/event/{event_id}", response_model=ArticleGraphResponse)
+def event_graph_endpoint(
+    event_id: int,
+    db: Session = Depends(get_db),
+) -> dict[str, list[dict]]:
+    """Возвращает граф события: статьи, источники, сущности и нарративы."""
+
+    try:
+        return build_event_graph(db, event_id)
+    except EventDetectionError as exc:
+        raise _event_http_error(exc) from exc
 
 
 @router.post("/narratives/discover", response_model=NarrativeDiscoveryResponse)
@@ -363,6 +456,41 @@ def _narrative_response(narrative: Narrative) -> NarrativeDetailResponse:
     )
 
 
+def _event_response(event: Event) -> EventDetailResponse:
+    """Преобразует ORM-модель события в API-ответ."""
+
+    return EventDetailResponse(
+        id=event.id,
+        title=event.title,
+        description=event.description,
+        event_date=event.event_date,
+        event_type=event.event_type,
+        location=event.location,
+        created_at=event.created_at,
+        articles=[
+            EventArticleItem(
+                article_id=link.article_id,
+                article_title=link.article.title,
+                source_name=link.article.source.name if link.article.source else "unknown",
+                same_event_probability=link.same_event_probability,
+                evidence_text=link.evidence_text,
+                published_at=link.article.published_at,
+            )
+            for link in event.articles
+        ],
+        entities=[
+            EventEntityItem(
+                entity_id=item.entity_id,
+                name=item.entity.name,
+                type=item.entity.type.value,
+                role=item.role,
+                importance_score=item.importance_score,
+            )
+            for item in event.entities
+        ],
+    )
+
+
 def _json_list(value: str | None) -> list[str]:
     if not value:
         return []
@@ -400,5 +528,16 @@ def _narrative_http_error(exc: NarrativeDiscoveryError) -> HTTPException:
     if "не найден" in message:
         return HTTPException(status_code=404, detail=message)
     if "Ollama" in message:
+        return HTTPException(status_code=503, detail=message)
+    return HTTPException(status_code=422, detail=message)
+
+
+def _event_http_error(exc: EventDetectionError) -> HTTPException:
+    message = str(exc)
+    if "не найден" in message:
+        return HTTPException(status_code=404, detail=message)
+    if "Сначала нужно" in message:
+        return HTTPException(status_code=400, detail=message)
+    if "Ollama" in message or "Qdrant" in message:
         return HTTPException(status_code=503, detail=message)
     return HTTPException(status_code=422, detail=message)

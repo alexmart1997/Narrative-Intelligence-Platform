@@ -92,6 +92,7 @@ class Article(Base):
     relations: Mapped[list["Relation"]] = relationship(back_populates="article")
     analysis: Mapped[Optional["ArticleAnalysis"]] = relationship(back_populates="article")
     narrative_evidence: Mapped[list["NarrativeEvidence"]] = relationship(back_populates="article")
+    events: Mapped[list["ArticleEvent"]] = relationship(back_populates="article")
 
 
 class Entity(Base):
@@ -126,6 +127,72 @@ class ArticleEntity(Base):
     importance_score: Mapped[Optional[float]] = mapped_column(Float)
 
     article: Mapped[Article] = relationship(back_populates="entities")
+    entity: Mapped[Entity] = relationship()
+
+
+class Event(Base):
+    """Событие, которое может быть описано несколькими статьями разных источников."""
+
+    __tablename__ = "events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    event_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    event_type: Mapped[Optional[str]] = mapped_column(String(120))
+    location: Mapped[Optional[str]] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    articles: Mapped[list["ArticleEvent"]] = relationship(back_populates="event")
+    entities: Mapped[list["EventEntity"]] = relationship(back_populates="event")
+
+
+class ArticleEvent(Base):
+    """Связь статьи с событием и уверенность, что статья описывает именно его."""
+
+    __tablename__ = "article_events"
+
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    event_id: Mapped[int] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    same_event_probability: Mapped[float] = mapped_column(Float, nullable=False)
+    evidence_text: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    article: Mapped[Article] = relationship(back_populates="events")
+    event: Mapped[Event] = relationship(back_populates="articles")
+
+
+class EventEntity(Base):
+    """Главная сущность события, собранная из сущностей связанных статей."""
+
+    __tablename__ = "event_entities"
+
+    event_id: Mapped[int] = mapped_column(
+        ForeignKey("events.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    entity_id: Mapped[int] = mapped_column(
+        ForeignKey("entities.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    role: Mapped[Optional[str]] = mapped_column(String(120))
+    importance_score: Mapped[Optional[float]] = mapped_column(Float)
+
+    event: Mapped[Event] = relationship(back_populates="entities")
     entity: Mapped[Entity] = relationship()
 
 
