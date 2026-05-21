@@ -38,7 +38,16 @@ def analyze_article(db: Session, article_id: int) -> ArticleAnalysis:
 
     data = parse_llm_json(raw_response)
     validate_analysis_payload(data)
-    return save_analysis(db, article, data)
+    analysis = save_analysis(db, article, data)
+
+    # После LLM-анализа сразу кладем embedding в Qdrant для поиска похожих материалов.
+    from app.vector import VectorError, embed_article
+
+    try:
+        embed_article(db, article.id)
+    except VectorError as exc:
+        raise AnalysisError(str(exc)) from exc
+    return analysis
 
 
 def build_analysis_prompt(article: Article) -> str:

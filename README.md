@@ -43,6 +43,12 @@ cp .env.example .env
 docker compose up -d
 ```
 
+Проверка Qdrant:
+
+```bash
+curl http://localhost:6333/healthz
+```
+
 3. Установите зависимости backend:
 
 ```bash
@@ -218,6 +224,38 @@ curl http://localhost:8000/articles/1/analysis
 ```
 
 Backend отправляет текст статьи в локальный Ollama, ожидает структурированный JSON, сохраняет резюме, тональность, stance, framing, гипотезу нарратива, сущности и отношения. Если модель вернет текст вокруг JSON, backend попробует извлечь JSON автоматически. Если JSON невалидный, API вернет понятную ошибку.
+
+## Векторизация и похожие статьи
+
+Для embeddings используется легкая мультиязычная модель `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`. Она подходит для MacBook и работает с русскими и английскими текстами.
+
+Qdrant запускается через Docker Compose:
+
+```bash
+docker compose up -d qdrant
+```
+
+Первый запуск embedding может занять время: sentence-transformers скачает модель локально.
+
+Создать embedding одной статьи:
+
+```bash
+curl -X POST http://localhost:8000/articles/1/embed
+```
+
+Создать embeddings для всех статей, у которых уже есть LLM-анализ:
+
+```bash
+curl -X POST http://localhost:8000/articles/embed-all
+```
+
+Найти похожие новости:
+
+```bash
+curl "http://localhost:8000/articles/1/similar?limit=10"
+```
+
+Embedding создается по `title + short_summary + text[:3000]`, а в Qdrant payload сохраняет `article_id`, `title`, `source_name`, `published_at`, `language`. Это нужно для сравнения освещения одного события разными изданиями.
 
 ### Ограничения MVP-парсеров
 

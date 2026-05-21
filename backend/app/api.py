@@ -16,15 +16,19 @@ from app.models import ArticleAnalysis
 from app.schemas import (
     AnalysisEntityItem,
     AnalysisRelationItem,
+    ArticleEmbedResponse,
     ArticleListItem,
     ArticleListResponse,
     ArticleAnalysisResponse,
+    EmbedAllResponse,
     IngestSourcePeriodRequest,
     IngestSourcePeriodResponse,
     LlmTestRequest,
     LlmTestResponse,
+    SimilarArticlesResponse,
     SourceInfo,
 )
+from app.vector import VectorError, embed_all_articles, embed_article, find_similar_articles
 
 
 router = APIRouter()
@@ -153,6 +157,41 @@ def get_article_analysis(
     return _analysis_response(analysis)
 
 
+@router.post("/articles/{article_id}/embed", response_model=ArticleEmbedResponse)
+def embed_article_endpoint(
+    article_id: int,
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Создает embedding одной статьи и сохраняет его в Qdrant."""
+
+    try:
+        return embed_article(db, article_id)
+    except VectorError as exc:
+        raise _vector_http_error(exc) from exc
+
+
+@router.post("/articles/embed-all", response_model=EmbedAllResponse)
+def embed_all_articles_endpoint(db: Session = Depends(get_db)) -> dict[str, int]:
+    """Векторизует все статьи, у которых есть LLM-анализ."""
+
+    return embed_all_articles(db)
+
+
+@router.get("/articles/{article_id}/similar", response_model=SimilarArticlesResponse)
+def similar_articles_endpoint(
+    article_id: int,
+    limit: int = Query(default=10, ge=1, le=50),
+    db: Session = Depends(get_db),
+) -> SimilarArticlesResponse:
+    """Ищет похожие статьи в Qdrant."""
+
+    try:
+        items = find_similar_articles(db, article_id=article_id, limit=limit)
+    except VectorError as exc:
+        raise _vector_http_error(exc) from exc
+    return SimilarArticlesResponse(article_id=article_id, items=items)
+
+
 def _analysis_response(analysis: ArticleAnalysis) -> ArticleAnalysisResponse:
     """Преобразует ORM-модель анализа в API-ответ."""
 
@@ -205,3 +244,12 @@ def _json_list(value: str | None) -> list[str]:
     if not isinstance(data, list):
         return []
     return [item for item in data if isinstance(item, str)]
+
+
+def _vector_http_error(exc: VectorError) -> HTTPException:
+    message = str(exc)
+    if message == "Статья не найдена":
+        return HTTPException(status_code=404, detail=message)
+    if "Сначала нужно выполнить" in message:
+        return HTTPException(status_code=400, detail=message)
+    return HTTPException(status_code=503, detail=message)

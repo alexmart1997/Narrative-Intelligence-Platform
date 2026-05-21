@@ -95,3 +95,29 @@ class ArticleAnalysisResponse(BaseModel):
     confidence: float
     entities: list[AnalysisEntityItem]
     relations: list[AnalysisRelationItem]
+
+
+class ArticleEmbedResponse(BaseModel):
+    article_id: int
+    collection: str
+    vector_size: int
+
+
+class EmbedAllResponse(BaseModel):
+    total: int
+    embedded: int
+    errors: int
+
+
+class SimilarArticleItem(BaseModel):
+    score: float
+    article_id: Optional[int]
+    title: str
+    source_name: str
+    published_at: str
+    language: str
+
+
+class SimilarArticlesResponse(BaseModel):
+    article_id: int
+    items: list[SimilarArticleItem]
