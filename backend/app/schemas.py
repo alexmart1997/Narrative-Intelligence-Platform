@@ -62,3 +62,36 @@ class LlmTestRequest(BaseModel):
 class LlmTestResponse(BaseModel):
     model: str
     response: str
+
+
+class AnalysisEntityItem(BaseModel):
+    id: int
+    name: str
+    type: str
+    role: Optional[str]
+    importance_score: Optional[float]
+
+
+class AnalysisRelationItem(BaseModel):
+    id: int
+    source: str
+    target: str
+    relation_type: str
+    description: str
+    confidence: float
+
+
+class ArticleAnalysisResponse(BaseModel):
+    id: int
+    article_id: int
+    short_summary: str
+    detailed_summary: str
+    sentiment: str
+    stance: str
+    framing: str
+    sympathizes_with: list[str]
+    criticizes: list[str]
+    narrative_hypothesis: str
+    confidence: float
+    entities: list[AnalysisEntityItem]
+    relations: list[AnalysisRelationItem]

@@ -203,6 +203,22 @@ curl "http://localhost:8000/articles?source_code=rbc&date_from=2026-05-01&date_t
 curl "http://localhost:8000/articles?q=election&language=en&limit=20"
 ```
 
+## LLM-анализ статьи
+
+Запустить анализ загруженной статьи:
+
+```bash
+curl -X POST http://localhost:8000/articles/1/analyze
+```
+
+Посмотреть сохраненный анализ:
+
+```bash
+curl http://localhost:8000/articles/1/analysis
+```
+
+Backend отправляет текст статьи в локальный Ollama, ожидает структурированный JSON, сохраняет резюме, тональность, stance, framing, гипотезу нарратива, сущности и отношения. Если модель вернет текст вокруг JSON, backend попробует извлечь JSON автоматически. Если JSON невалидный, API вернет понятную ошибку.
+
 ### Ограничения MVP-парсеров
 
 - Сайты могут менять HTML, поэтому часть селекторов со временем потребуется обновлять.
