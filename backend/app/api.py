@@ -14,7 +14,8 @@ from app.graph import GraphError, build_article_graph
 from app.ingestion.service import ingest_source_period, query_articles, supported_sources
 from app.config import settings
 from app.llm import LlmError, call_llm
-from app.models import ArticleAnalysis
+from app.models import ArticleAnalysis, Narrative
+from app.narratives import NarrativeDiscoveryError, build_narrative_graph, discover_narratives
 from app.schemas import (
     AnalysisEntityItem,
     AnalysisRelationItem,
@@ -31,6 +32,10 @@ from app.schemas import (
     IngestSourcePeriodResponse,
     LlmTestRequest,
     LlmTestResponse,
+    NarrativeDetailResponse,
+    NarrativeDiscoveryResponse,
+    NarrativeEvidenceItem,
+    NarrativeListItem,
     SimilarArticlesResponse,
     SourceInfo,
 )
@@ -240,6 +245,60 @@ def article_graph_endpoint(
         raise HTTPException(status_code=status_code, detail=message) from exc
 
 
+@router.post("/narratives/discover", response_model=NarrativeDiscoveryResponse)
+def discover_narratives_endpoint(db: Session = Depends(get_db)) -> dict[str, int]:
+    """Находит общие нарративы по narrative_hypothesis из LLM-анализов."""
+
+    try:
+        return discover_narratives(db)
+    except NarrativeDiscoveryError as exc:
+        raise _narrative_http_error(exc) from exc
+
+
+@router.get("/narratives", response_model=list[NarrativeListItem])
+def list_narratives(db: Session = Depends(get_db)) -> list[NarrativeListItem]:
+    """Возвращает список найденных нарративов."""
+
+    narratives = db.query(Narrative).order_by(Narrative.created_at.desc()).all()
+    return [
+        NarrativeListItem(
+            id=narrative.id,
+            title=narrative.title,
+            description=narrative.description,
+            frame=narrative.frame,
+            evidence_count=len(narrative.evidence),
+            created_at=narrative.created_at,
+        )
+        for narrative in narratives
+    ]
+
+
+@router.get("/narratives/{narrative_id}", response_model=NarrativeDetailResponse)
+def get_narrative(
+    narrative_id: int,
+    db: Session = Depends(get_db),
+) -> NarrativeDetailResponse:
+    """Возвращает нарратив и статьи-доказательства."""
+
+    narrative = db.get(Narrative, narrative_id)
+    if narrative is None:
+        raise HTTPException(status_code=404, detail="Нарратив не найден")
+    return _narrative_response(narrative)
+
+
+@router.get("/graph/narrative/{narrative_id}", response_model=ArticleGraphResponse)
+def narrative_graph_endpoint(
+    narrative_id: int,
+    db: Session = Depends(get_db),
+) -> dict[str, list[dict]]:
+    """Возвращает граф нарратива, связанных статей, источников и сущностей."""
+
+    try:
+        return build_narrative_graph(db, narrative_id)
+    except NarrativeDiscoveryError as exc:
+        raise _narrative_http_error(exc) from exc
+
+
 def _analysis_response(analysis: ArticleAnalysis) -> ArticleAnalysisResponse:
     """Преобразует ORM-модель анализа в API-ответ."""
 
@@ -282,6 +341,28 @@ def _analysis_response(analysis: ArticleAnalysis) -> ArticleAnalysisResponse:
     )
 
 
+def _narrative_response(narrative: Narrative) -> NarrativeDetailResponse:
+    """Преобразует ORM-модель нарратива в API-ответ."""
+
+    return NarrativeDetailResponse(
+        id=narrative.id,
+        title=narrative.title,
+        description=narrative.description,
+        frame=narrative.frame,
+        created_at=narrative.created_at,
+        evidence=[
+            NarrativeEvidenceItem(
+                article_id=evidence.article_id,
+                article_title=evidence.article.title,
+                source_name=evidence.article.source.name if evidence.article.source else "unknown",
+                evidence_text=evidence.evidence_text,
+                confidence=evidence.confidence,
+            )
+            for evidence in narrative.evidence
+        ],
+    )
+
+
 def _json_list(value: str | None) -> list[str]:
     if not value:
         return []
@@ -310,5 +391,14 @@ def _comparison_http_error(exc: ComparisonError) -> HTTPException:
     if "сначала нужно выполнить" in message:
         return HTTPException(status_code=400, detail=message)
     if "Ollama" in message or "Qdrant" in message:
+        return HTTPException(status_code=503, detail=message)
+    return HTTPException(status_code=422, detail=message)
+
+
+def _narrative_http_error(exc: NarrativeDiscoveryError) -> HTTPException:
+    message = str(exc)
+    if "не найден" in message:
+        return HTTPException(status_code=404, detail=message)
+    if "Ollama" in message:
         return HTTPException(status_code=503, detail=message)
     return HTTPException(status_code=422, detail=message)

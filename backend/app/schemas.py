@@ -172,3 +172,35 @@ class GraphEdge(BaseModel):
 class ArticleGraphResponse(BaseModel):
     nodes: list[GraphNode]
     edges: list[GraphEdge]
+
+
+class NarrativeDiscoveryResponse(BaseModel):
+    total_analyses: int
+    clusters: int
+    created_narratives: int
+
+
+class NarrativeEvidenceItem(BaseModel):
+    article_id: int
+    article_title: str
+    source_name: str
+    evidence_text: str
+    confidence: float
+
+
+class NarrativeListItem(BaseModel):
+    id: int
+    title: str
+    description: str
+    frame: str
+    evidence_count: int
+    created_at: datetime
+
+
+class NarrativeDetailResponse(BaseModel):
+    id: int
+    title: str
+    description: str
+    frame: str
+    created_at: datetime
+    evidence: list[NarrativeEvidenceItem]
