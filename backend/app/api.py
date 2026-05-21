@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.analysis import AnalysisError, analyze_article
 from app.comparison import ComparisonError, compare_articles, compare_with_similar
 from app.database import get_db
+from app.graph import GraphError, build_article_graph
 from app.ingestion.service import ingest_source_period, query_articles, supported_sources
 from app.config import settings
 from app.llm import LlmError, call_llm
@@ -17,6 +18,7 @@ from app.models import ArticleAnalysis
 from app.schemas import (
     AnalysisEntityItem,
     AnalysisRelationItem,
+    ArticleGraphResponse,
     ArticleEmbedResponse,
     ArticleListItem,
     ArticleListResponse,
@@ -221,6 +223,21 @@ def compare_with_similar_endpoint(
     except ComparisonError as exc:
         raise _comparison_http_error(exc) from exc
     return CompareWithSimilarResponse(article_id=article_id, items=items)
+
+
+@router.get("/graph/article/{article_id}", response_model=ArticleGraphResponse)
+def article_graph_endpoint(
+    article_id: int,
+    db: Session = Depends(get_db),
+) -> dict[str, list[dict]]:
+    """Возвращает граф статьи, источника, сущностей, отношений и нарратива."""
+
+    try:
+        return build_article_graph(db, article_id)
+    except GraphError as exc:
+        message = str(exc)
+        status_code = 404 if message == "Статья не найдена" else 400
+        raise HTTPException(status_code=status_code, detail=message) from exc
 
 
 def _analysis_response(analysis: ArticleAnalysis) -> ArticleAnalysisResponse:

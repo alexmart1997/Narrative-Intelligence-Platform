@@ -152,3 +152,23 @@ class CompareWithSimilarItem(BaseModel):
 class CompareWithSimilarResponse(BaseModel):
     article_id: int
     items: list[CompareWithSimilarItem]
+
+
+class GraphNode(BaseModel):
+    id: str
+    label: str
+    type: str
+    data: dict
+
+
+class GraphEdge(BaseModel):
+    id: str
+    source: str
+    target: str
+    label: str
+    data: dict
+
+
+class ArticleGraphResponse(BaseModel):
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]

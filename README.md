@@ -278,6 +278,23 @@ curl http://localhost:8000/articles/1/compare-with-similar
 
 Перед сравнением у статей должен быть сохраненный LLM-анализ. Для `compare-with-similar` также нужны embeddings в Qdrant.
 
+## Граф статьи
+
+Создать тестовые данные для просмотра графа без реальных новостей:
+
+```bash
+cd backend
+PYTHONPATH=. python -m app.seed
+```
+
+Команда выведет `article_id`, который можно открыть графовым endpoint:
+
+```bash
+curl http://localhost:8000/graph/article/12
+```
+
+Граф содержит узлы статьи, источника, сущностей, гипотезы нарратива и связи `published_by`, `mentions`, `relates_to`, `sympathizes_with`, `criticizes`, `supports_narrative`.
+
 ### Ограничения MVP-парсеров
 
 - Сайты могут менять HTML, поэтому часть селекторов со временем потребуется обновлять.
