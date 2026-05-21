@@ -11,6 +11,20 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
+## Миграции
+
+Перед запуском API поднимите PostgreSQL из корня проекта:
+
+```bash
+docker compose up -d postgres
+```
+
+Затем примените миграции из папки `backend`:
+
+```bash
+alembic upgrade head
+```
+
 Healthcheck:
 
 ```bash

@@ -1,4 +1,9 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
@@ -14,8 +19,18 @@ class Settings(BaseSettings):
     qdrant_port: int = 6333
     ollama_base_url: str = "http://localhost:11434"
 
+    @property
+    def database_url(self) -> str:
+        """DSN PostgreSQL для SQLAlchemy и Alembic."""
+
+        return (
+            "postgresql+psycopg://"
+            f"{self.postgres_user}:{self.postgres_password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
+
     model_config = SettingsConfigDict(
-        env_file="../.env",
+        env_file=ROOT_DIR / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )

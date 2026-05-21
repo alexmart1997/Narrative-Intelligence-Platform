@@ -52,7 +52,13 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-4. Запустите backend:
+4. Примените миграции PostgreSQL:
+
+```bash
+alembic upgrade head
+```
+
+5. Запустите backend:
 
 ```bash
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
@@ -64,14 +70,14 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 curl http://localhost:8000/health
 ```
 
-5. В отдельном терминале установите зависимости frontend:
+6. В отдельном терминале установите зависимости frontend:
 
 ```bash
 cd frontend
 npm install
 ```
 
-6. Запустите frontend:
+7. Запустите frontend:
 
 ```bash
 npm run dev
@@ -95,6 +101,20 @@ Backend пока только хранит адрес Ollama в конфигур
 - Frontend: `http://localhost:3000`
 - PostgreSQL: `localhost:5432`
 - Qdrant REST API: `http://localhost:6333`
+
+## Миграции БД
+
+Миграции лежат в `backend/alembic`. Команды выполняются из папки `backend` с активированным виртуальным окружением:
+
+```bash
+alembic upgrade head
+```
+
+Создать новую миграцию после изменения моделей:
+
+```bash
+alembic revision --autogenerate -m "describe changes"
+```
 
 ## Остановка инфраструктуры
 
