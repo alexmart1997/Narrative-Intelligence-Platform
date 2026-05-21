@@ -19,6 +19,10 @@ export default function Home() {
             <li key={item}>{item}</li>
           ))}
         </ul>
+        <nav className={styles.links} aria-label="Основные разделы">
+          <a href="/articles">Articles</a>
+          <a href="/narratives">Narratives</a>
+        </nav>
       </section>
     </main>
   );

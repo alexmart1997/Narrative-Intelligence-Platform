@@ -86,6 +86,27 @@ export type CompareWithSimilarResponse = {
   items: CompareWithSimilarItem[];
 };
 
+export type NarrativeListItem = {
+  id: number;
+  title: string;
+  description: string;
+  frame: string;
+  evidence_count: number;
+  created_at: string;
+};
+
+export type NarrativeEvidenceItem = {
+  article_id: number;
+  article_title: string;
+  source_name: string;
+  evidence_text: string;
+  confidence: number;
+};
+
+export type NarrativeDetailResponse = Omit<NarrativeListItem, "evidence_count"> & {
+  evidence: NarrativeEvidenceItem[];
+};
+
 type ArticleFilters = {
   sourceCode?: string;
   language?: string;
@@ -142,4 +163,16 @@ export async function getSimilarArticles(articleId: number): Promise<SimilarArti
 
 export async function compareWithSimilar(articleId: number): Promise<CompareWithSimilarResponse> {
   return request<CompareWithSimilarResponse>(`/articles/${articleId}/compare-with-similar`);
+}
+
+export async function getNarratives(): Promise<NarrativeListItem[]> {
+  return request<NarrativeListItem[]>("/narratives");
+}
+
+export async function getNarrative(narrativeId: number): Promise<NarrativeDetailResponse> {
+  return request<NarrativeDetailResponse>(`/narratives/${narrativeId}`);
+}
+
+export async function getNarrativeGraph(narrativeId: number): Promise<ArticleGraphResponse> {
+  return request<ArticleGraphResponse>(`/graph/narrative/${narrativeId}`);
 }

@@ -56,6 +56,25 @@
   font-weight: 600;
 }
 
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 8px;
+  background: #2557d6;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 800;
+}
+
 @media (max-width: 640px) {
   .main {
     padding: 20px;
