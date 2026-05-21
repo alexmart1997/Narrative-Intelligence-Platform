@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
-  ArticleGraphResponse,
   ArticleListItem,
   SimilarArticleItem,
   SourceInfo,
   analyzeArticle,
-  getArticleGraph,
   getArticles,
   getSimilarArticles,
   getSources
@@ -22,6 +21,7 @@ type ActionState = {
 type ArticleAction = "analyze" | "graph" | "similar";
 
 export default function ArticlesPage() {
+  const router = useRouter();
   const [articles, setArticles] = useState<ArticleListItem[]>([]);
   const [sources, setSources] = useState<SourceInfo[]>([]);
   const [sourceCode, setSourceCode] = useState("");
@@ -30,7 +30,6 @@ export default function ArticlesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionState, setActionState] = useState<ActionState>(null);
-  const [graph, setGraph] = useState<ArticleGraphResponse | null>(null);
   const [similarByArticle, setSimilarByArticle] = useState<Record<number, SimilarArticleItem[]>>({});
 
   const languages = useMemo(() => ["ru", "en"], []);
@@ -70,16 +69,8 @@ export default function ArticlesPage() {
     }
   }
 
-  async function handleOpenGraph(articleId: number) {
-    setActionState({ articleId, action: "graph" });
-    setError(null);
-    try {
-      setGraph(await getArticleGraph(articleId));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Не удалось загрузить граф");
-    } finally {
-      setActionState(null);
-    }
+  function handleOpenGraph(articleId: number) {
+    router.push(`/articles/${articleId}/graph`);
   }
 
   async function handleFindSimilar(articleId: number) {
@@ -216,24 +207,11 @@ export default function ArticlesPage() {
         </div>
 
         <aside className={styles.graphPanel}>
-          <div className={styles.panelHeader}>
-            <h2>Graph preview</h2>
-            {graph ? (
-              <button onClick={() => setGraph(null)} className={styles.secondaryButton}>
-                Clear
-              </button>
-            ) : null}
-          </div>
-          {graph ? (
-            <div className={styles.graphSummary}>
-              <p>
-                {graph.nodes.length} nodes · {graph.edges.length} edges
-              </p>
-              <pre>{JSON.stringify(graph, null, 2)}</pre>
-            </div>
-          ) : (
-            <p className={styles.panelHint}>Open a graph from any article card.</p>
-          )}
+          <h2>Graph view</h2>
+          <p>
+            Use <strong>Open graph</strong> to inspect the article, source,
+            entities, narrative and relations in an interactive canvas.
+          </p>
         </aside>
       </section>
     </main>
