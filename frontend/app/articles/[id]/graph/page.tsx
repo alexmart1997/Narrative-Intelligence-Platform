@@ -5,6 +5,10 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import {
   ArticleGraphResponse,
   GraphEdge,
@@ -20,16 +24,50 @@ type SceneNode = GraphNode & {
   position: THREE.Vector3;
   size: number;
   color: string;
+  weight: number;
+  confidence: number;
 };
 
 type NodeMesh = THREE.Mesh & {
   userData: {
     graphNode: SceneNode;
+    baseSize: number;
   };
+};
+
+type GraphMode = "article" | "event" | "narrative" | "divergence";
+
+type VisualFilters = {
+  showEntities: boolean;
+  showArticles: boolean;
+  showSources: boolean;
+  showNarratives: boolean;
+  showWeakEdges: boolean;
+  confidenceThreshold: number;
+  labelDensity: number;
+};
+
+type CameraMode = "free" | "top";
+
+type SceneApi = {
+  dispose: () => void;
+  resetView: () => void;
+  topDown: () => void;
+};
+
+const defaultFilters: VisualFilters = {
+  showEntities: true,
+  showArticles: true,
+  showSources: true,
+  showNarratives: true,
+  showWeakEdges: true,
+  confidenceThreshold: 0,
+  labelDensity: 0.55
 };
 
 const entityNodeTypes = new Set(["person", "organization", "country", "location", "concept"]);
 const routeEdgeTypes = new Set(["same_event_as", "similar_to", "shares_narrative", "entity_in_article"]);
+const entityOrNarrativeTypes = new Set(["person", "organization", "country", "location", "concept", "narrative"]);
 
 const nodeTypes = [
   { type: "article", label: "Статья" },
@@ -85,11 +123,16 @@ export default function ArticleGraphPage() {
   const initialArticleId = Number(params.id);
   const [activeArticleId, setActiveArticleId] = useState(initialArticleId);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const sceneApiRef = useRef<{ dispose: () => void; rerun: () => void } | null>(null);
+  const sceneApiRef = useRef<SceneApi | null>(null);
   const [graph, setGraph] = useState<ArticleGraphResponse | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
   const [focusEntity, setFocusEntity] = useState<{ id: number; name: string } | null>(null);
+  const [graphMode, setGraphMode] = useState<GraphMode>("article");
+  const [filters, setFilters] = useState<VisualFilters>(defaultFilters);
+  const [autoOrbit, setAutoOrbit] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const [cameraMode, setCameraMode] = useState<CameraMode>("free");
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -122,6 +165,12 @@ export default function ArticleGraphPage() {
       activeArticleId,
       container: containerRef.current,
       graph,
+      mode: graphMode,
+      filters,
+      autoOrbit,
+      focusMode,
+      selectedNodeId: selectedNode?.id ?? null,
+      cameraMode,
       onEdgeSelect: (edge) => {
         setSelectedEdge(edge);
         setSelectedNode(null);
@@ -147,7 +196,7 @@ export default function ArticleGraphPage() {
       sceneApiRef.current?.dispose();
       sceneApiRef.current = null;
     };
-  }, [activeArticleId, graph, router]);
+  }, [activeArticleId, autoOrbit, cameraMode, filters, focusMode, graph, graphMode, router, selectedNode?.id]);
 
   async function loadGraph(articleId: number, focusEntityId: number | null = focusEntity?.id ?? null) {
     setLoading(true);
@@ -190,6 +239,10 @@ export default function ArticleGraphPage() {
     }
   }
 
+  function updateFilter<K extends keyof VisualFilters>(key: K, value: VisualFilters[K]) {
+    setFilters((current) => ({ ...current, [key]: value }));
+  }
+
   return (
     <main className={styles.page}>
       <header className={styles.header}>
@@ -204,8 +257,17 @@ export default function ArticleGraphPage() {
           <span className={styles.stats}>
             {graph ? `${graph.nodes.length} узлов · ${graph.edges.length} связей · ${relatedCount} связанных статей` : "3D граф"}
           </span>
-          <button onClick={() => sceneApiRef.current?.rerun()} disabled={!graph || loading}>
-            Сфокусировать
+          <button onClick={() => sceneApiRef.current?.resetView()} disabled={!graph || loading}>
+            Reset view
+          </button>
+          <button onClick={() => sceneApiRef.current?.topDown()} disabled={!graph || loading}>
+            Top-down
+          </button>
+          <button className={autoOrbit ? styles.activeButton : ""} onClick={() => setAutoOrbit((value) => !value)} disabled={!graph || loading}>
+            Auto-orbit
+          </button>
+          <button className={focusMode ? styles.activeButton : ""} onClick={() => setFocusMode((value) => !value)} disabled={!graph || loading}>
+            Focus mode
           </button>
           {focusEntity ? (
             <button onClick={() => setFocusEntity(null)} disabled={loading || processing}>
@@ -220,6 +282,62 @@ export default function ArticleGraphPage() {
 
       <section className={styles.shell}>
         <section className={styles.canvasWrap}>
+          <div className={styles.modeBar}>
+            {(["article", "event", "narrative", "divergence"] as GraphMode[]).map((mode) => (
+              <button
+                key={mode}
+                className={graphMode === mode ? styles.activeMode : ""}
+                onClick={() => setGraphMode(mode)}
+              >
+                {translateGraphMode(mode)}
+              </button>
+            ))}
+          </div>
+          <div className={styles.filterPanel}>
+            <strong>Filters</strong>
+            <label>
+              <input type="checkbox" checked={filters.showEntities} onChange={(event) => updateFilter("showEntities", event.target.checked)} />
+              entities
+            </label>
+            <label>
+              <input type="checkbox" checked={filters.showArticles} onChange={(event) => updateFilter("showArticles", event.target.checked)} />
+              articles
+            </label>
+            <label>
+              <input type="checkbox" checked={filters.showSources} onChange={(event) => updateFilter("showSources", event.target.checked)} />
+              sources
+            </label>
+            <label>
+              <input type="checkbox" checked={filters.showNarratives} onChange={(event) => updateFilter("showNarratives", event.target.checked)} />
+              narratives
+            </label>
+            <label>
+              <input type="checkbox" checked={filters.showWeakEdges} onChange={(event) => updateFilter("showWeakEdges", event.target.checked)} />
+              weak edges
+            </label>
+            <label>
+              confidence
+              <input
+                type="range"
+                min="0"
+                max="0.95"
+                step="0.05"
+                value={filters.confidenceThreshold}
+                onChange={(event) => updateFilter("confidenceThreshold", Number(event.target.value))}
+              />
+            </label>
+            <label>
+              label density
+              <input
+                type="range"
+                min="0.1"
+                max="1"
+                step="0.05"
+                value={filters.labelDensity}
+                onChange={(event) => updateFilter("labelDensity", Number(event.target.value))}
+              />
+            </label>
+          </div>
           <div className={styles.legend}>
             {nodeTypes.map((item) => (
               <span key={item.type}>
@@ -229,10 +347,11 @@ export default function ArticleGraphPage() {
             ))}
           </div>
           <div className={styles.sceneMeta}>
-            <strong>Density map</strong>
-            <span>Размер точки = сила события / нарратива</span>
+            <strong>Premium intelligence map</strong>
+            <span>Размер = важность / плотность / уверенность</span>
+            <span>Прозрачность = confidence, толщина дуги = сила связи</span>
             <span>Клик по статье = открыть ее граф · клик по сущности = переезд к новостям с ней</span>
-            <span>Drag = orbit · Wheel = zoom</span>
+            <span>Hover подсвечивает соседей · particles показывают направление</span>
           </div>
           {focusEntity ? (
             <div className={styles.focusBanner}>
@@ -290,19 +409,33 @@ export default function ArticleGraphPage() {
 
 function createThreeGraphScene({
   activeArticleId,
+  autoOrbit,
+  cameraMode,
   container,
+  filters,
+  focusMode,
   graph,
+  mode,
   onEdgeSelect,
-  onNodeSelect
+  onNodeSelect,
+  selectedNodeId
 }: {
   activeArticleId: number;
+  autoOrbit: boolean;
+  cameraMode: CameraMode;
   container: HTMLDivElement;
+  filters: VisualFilters;
+  focusMode: boolean;
   graph: ArticleGraphResponse;
+  mode: GraphMode;
   onEdgeSelect: (edge: GraphEdge) => void;
   onNodeSelect: (node: GraphNode) => void;
+  selectedNodeId: string | null;
 }) {
-  const sceneNodes = buildSceneNodes(graph, activeArticleId);
+  const visibleGraph = applyGraphFilters(graph, filters, focusMode ? selectedNodeId : null);
+  const sceneNodes = buildSceneNodes(visibleGraph, activeArticleId, mode);
   const nodeById = new Map(sceneNodes.map((node) => [node.id, node]));
+  const neighborMap = buildNeighborMap(visibleGraph.edges);
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2("#030405", 0.0019);
 
@@ -315,7 +448,15 @@ function createThreeGraphScene({
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(width, height);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
   container.replaceChildren(renderer.domElement);
+
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.62, 0.72, 0.1);
+  composer.addPass(bloomPass);
+  composer.addPass(new OutputPass());
 
   const labelLayer = document.createElement("div");
   labelLayer.className = styles.labelLayer;
@@ -329,6 +470,8 @@ function createThreeGraphScene({
   controls.panSpeed = 0.5;
   controls.minDistance = 160;
   controls.maxDistance = 1200;
+  controls.autoRotate = autoOrbit;
+  controls.autoRotateSpeed = 0.8;
   controls.target.set(0, 0, 0);
 
   scene.add(new THREE.AmbientLight("#7dd3fc", 0.7));
@@ -344,22 +487,35 @@ function createThreeGraphScene({
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
   const edgeObjects: Array<{ edge: GraphEdge; object: THREE.Object3D }> = [];
+  const animatedParticles: Array<{ mesh: THREE.Mesh; curve: THREE.QuadraticBezierCurve3; speed: number; offset: number }> = [];
+  let hoveredNodeId: string | null = null;
+  let flyTarget: { camera: THREE.Vector3; target: THREE.Vector3; startedAt: number; duration: number } | null = null;
+  const clock = new THREE.Clock();
 
   addStarField(scene);
   addDepthRings(scene);
 
-  for (const edge of graph.edges) {
+  for (const edge of visibleGraph.edges) {
     const source = nodeById.get(edge.source);
     const target = nodeById.get(edge.target);
     if (!source || !target) continue;
     const object = createEdgeObject(source, target, edge);
     scene.add(object);
     edgeObjects.push({ edge, object });
+    if (animatedParticles.length < 140) {
+      const items = createFlowParticles(source, target, edge);
+      for (const item of items) {
+        scene.add(item.mesh);
+        animatedParticles.push(item);
+      }
+    }
   }
 
   for (const node of sceneNodes) {
-    const mesh = createNodeMesh(node, node.id === `article_${activeArticleId}`) as unknown as NodeMesh;
+    const selected = node.id === selectedNodeId;
+    const mesh = createNodeMesh(node, node.id === `article_${activeArticleId}` || Boolean(node.data.is_focus), selected) as unknown as NodeMesh;
     mesh.userData.graphNode = node;
+    mesh.userData.baseSize = node.size;
     scene.add(mesh);
     nodeMeshes.push(mesh);
 
@@ -373,9 +529,18 @@ function createThreeGraphScene({
   }
 
   function render() {
+    const delta = clock.getDelta();
+    if (flyTarget) {
+      const progress = Math.min(1, (performance.now() - flyTarget.startedAt) / flyTarget.duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      camera.position.lerp(flyTarget.camera, eased);
+      controls.target.lerp(flyTarget.target, eased);
+      if (progress >= 1) flyTarget = null;
+    }
+    updateFlowParticles(animatedParticles, delta);
     controls.update();
-    updateHtmlLabels(labelItems, camera, renderer);
-    renderer.render(scene, camera);
+    updateHtmlLabels(labelItems, camera, renderer, filters.labelDensity, hoveredNodeId, selectedNodeId);
+    composer.render();
     animationId = requestAnimationFrame(render);
   }
 
@@ -385,6 +550,7 @@ function createThreeGraphScene({
     camera.aspect = nextWidth / nextHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(nextWidth, nextHeight);
+    composer.setSize(nextWidth, nextHeight);
   }
 
   function click(event: MouseEvent) {
@@ -396,6 +562,7 @@ function createThreeGraphScene({
     const nodeHit = raycaster.intersectObjects(nodeMeshes, false)[0];
     if (nodeHit) {
       onNodeSelect((nodeHit.object as NodeMesh).userData.graphNode);
+      flyToNode((nodeHit.object as NodeMesh).userData.graphNode);
       return;
     }
 
@@ -408,14 +575,48 @@ function createThreeGraphScene({
     }
   }
 
+  function move(event: MouseEvent) {
+    const rect = renderer.domElement.getBoundingClientRect();
+    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+    const nodeHit = raycaster.intersectObjects(nodeMeshes, false)[0];
+    const nextHoveredId = nodeHit ? (nodeHit.object as NodeMesh).userData.graphNode.id : null;
+    if (nextHoveredId !== hoveredNodeId) {
+      hoveredNodeId = nextHoveredId;
+      applyHoverState(nodeMeshes, edgeObjects, neighborMap, hoveredNodeId, selectedNodeId);
+    }
+  }
+
   let animationId = requestAnimationFrame(render);
   window.addEventListener("resize", resize);
   renderer.domElement.addEventListener("click", click);
+  renderer.domElement.addEventListener("mousemove", move);
 
-  function focus() {
+  if (cameraMode === "top") {
+    topDown();
+  }
+
+  function resetView() {
     camera.position.set(0, 220, 680);
     controls.target.set(0, 0, 0);
     controls.update();
+  }
+
+  function topDown() {
+    camera.position.set(0, 820, 8);
+    controls.target.set(0, 0, 0);
+    controls.update();
+  }
+
+  function flyToNode(node: SceneNode) {
+    const direction = camera.position.clone().sub(controls.target).normalize();
+    flyTarget = {
+      camera: node.position.clone().add(direction.multiplyScalar(280)),
+      target: node.position.clone(),
+      startedAt: performance.now(),
+      duration: 850,
+    };
   }
 
   return {
@@ -423,6 +624,7 @@ function createThreeGraphScene({
       cancelAnimationFrame(animationId);
       window.removeEventListener("resize", resize);
       renderer.domElement.removeEventListener("click", click);
+      renderer.domElement.removeEventListener("mousemove", move);
       controls.dispose();
       scene.traverse((object) => {
         if (object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.Points) {
@@ -435,14 +637,53 @@ function createThreeGraphScene({
           }
         }
       });
+      composer.dispose();
       renderer.dispose();
       container.replaceChildren();
     },
-    rerun: focus
+    resetView,
+    topDown
   };
 }
 
-function buildSceneNodes(graph: ArticleGraphResponse, activeArticleId: number): SceneNode[] {
+function applyGraphFilters(graph: ArticleGraphResponse, filters: VisualFilters, focusNodeId: string | null): ArticleGraphResponse {
+  const allowedNodeIds = new Set<string>();
+  const neighbors = focusNodeId ? buildNeighborMap(graph.edges).get(focusNodeId) ?? new Set<string>() : null;
+
+  for (const node of graph.nodes) {
+    if (!filters.showArticles && node.type === "article") continue;
+    if (!filters.showSources && node.type === "source") continue;
+    if (!filters.showNarratives && node.type === "narrative") continue;
+    if (!filters.showEntities && entityNodeTypes.has(node.type)) continue;
+    if (focusNodeId && node.id !== focusNodeId && !neighbors?.has(node.id)) continue;
+    allowedNodeIds.add(node.id);
+  }
+
+  const edges = graph.edges.filter((edge) => {
+    if (!allowedNodeIds.has(edge.source) || !allowedNodeIds.has(edge.target)) return false;
+    const strength = edgeStrength(edge);
+    if (!filters.showWeakEdges && strength < 0.5) return false;
+    return strength >= filters.confidenceThreshold;
+  });
+
+  return {
+    nodes: graph.nodes.filter((node) => allowedNodeIds.has(node.id)),
+    edges,
+  };
+}
+
+function buildNeighborMap(edges: GraphEdge[]) {
+  const map = new Map<string, Set<string>>();
+  for (const edge of edges) {
+    if (!map.has(edge.source)) map.set(edge.source, new Set());
+    if (!map.has(edge.target)) map.set(edge.target, new Set());
+    map.get(edge.source)?.add(edge.target);
+    map.get(edge.target)?.add(edge.source);
+  }
+  return map;
+}
+
+function buildSceneNodes(graph: ArticleGraphResponse, activeArticleId: number, mode: GraphMode): SceneNode[] {
   const activeId = `article_${activeArticleId}`;
   const focusEntity = graph.nodes.find((node) => Boolean(node.data.is_focus));
   const relatedArticles = graph.nodes.filter((node) => node.type === "article" && node.id !== activeId);
@@ -451,6 +692,47 @@ function buildSceneNodes(graph: ArticleGraphResponse, activeArticleId: number): 
   const narratives = graph.nodes.filter((node) => node.type === "narrative");
   const active = graph.nodes.find((node) => node.id === activeId);
   const result: SceneNode[] = [];
+
+  if (mode === "event") {
+    const articles = graph.nodes.filter((node) => node.type === "article");
+    articles.forEach((node, index) => {
+      const angle = (index / Math.max(articles.length, 1)) * Math.PI * 2;
+      const radius = node.id === activeId ? 44 : 215 + (index % 2) * 44;
+      result.push(toSceneNode(
+        node,
+        new THREE.Vector3(Math.cos(angle) * radius + sourceOffsetForArticle(node, index), Math.sin(index) * 44, Math.sin(angle) * radius),
+        node.id === activeId,
+      ));
+    });
+    sources.forEach((node, index) => result.push(toSceneNode(node, new THREE.Vector3(-285, (index - sources.length / 2) * 95, -125), false)));
+    entities.slice(0, 12).forEach((node, index) => result.push(radialNode(node, index, entities.length, 345, 82, false)));
+    narratives.forEach((node, index) => result.push(toSceneNode(node, new THREE.Vector3(285, (index - narratives.length / 2) * 92, -140), false)));
+    return result;
+  }
+
+  if (mode === "narrative") {
+    const mainNarrative = narratives[0];
+    if (mainNarrative) result.push(toSceneNode(mainNarrative, new THREE.Vector3(0, 0, 0), true));
+    graph.nodes
+      .filter((node) => node.type === "article")
+      .forEach((node, index, articles) => result.push(radialNode(node, index, articles.length, 215, 68, node.id === activeId)));
+    sources.forEach((node, index) => result.push(toSceneNode(node, new THREE.Vector3(-270, (index - sources.length / 2) * 86, -100), false)));
+    entities.slice(0, 10).forEach((node, index) => result.push(radialNode(node, index, entities.length, 335, 90, false)));
+    narratives.slice(1).forEach((node, index) => result.push(toSceneNode(node, new THREE.Vector3(260, (index - narratives.length / 2) * 90, -130), false)));
+    return result;
+  }
+
+  if (mode === "divergence") {
+    if (active) result.push(toSceneNode(active, new THREE.Vector3(0, 0, 0), true));
+    sources.forEach((node, index) => {
+      const angle = (index / Math.max(sources.length, 1)) * Math.PI * 2;
+      result.push(toSceneNode(node, new THREE.Vector3(Math.cos(angle) * 250, Math.sin(index) * 56, Math.sin(angle) * 250), false));
+    });
+    narratives.forEach((node, index) => result.push(toSceneNode(node, new THREE.Vector3(300, (index - narratives.length / 2) * 88, -90), false)));
+    entities.forEach((node, index) => result.push(radialNode(node, index, entities.length, 165 + (index % 3) * 34, 76, false)));
+    relatedArticles.forEach((node, index) => result.push(toSceneNode(node, new THREE.Vector3(-280, (index - relatedArticles.length / 2) * 92, -110), false)));
+    return result;
+  }
 
   if (focusEntity) {
     result.push(toSceneNode(focusEntity, new THREE.Vector3(0, 0, 0), true));
@@ -495,47 +777,70 @@ function buildSceneNodes(graph: ArticleGraphResponse, activeArticleId: number): 
   return result;
 }
 
+function radialNode(node: GraphNode, index: number, count: number, radius: number, yScale: number, focused: boolean) {
+  const angle = (index / Math.max(count, 1)) * Math.PI * 2;
+  return toSceneNode(
+    node,
+    new THREE.Vector3(Math.cos(angle) * radius, Math.sin(index * 1.3) * yScale, Math.sin(angle) * radius),
+    focused,
+  );
+}
+
+function sourceOffsetForArticle(node: GraphNode, index: number) {
+  const sourceName = String(node.data.source_name ?? "");
+  if (!sourceName) return 0;
+  return ((sourceName.charCodeAt(0) + index * 17) % 5 - 2) * 32;
+}
+
 function toSceneNode(node: GraphNode, position: THREE.Vector3, focused: boolean): SceneNode {
   const density = Math.min(5, Math.max(1, Number(node.data.density_score ?? 1)));
-  const baseSize = node.type === "article" ? 15 + density * 2.3 : node.type === "narrative" ? 23 : 17;
+  const confidence = nodeConfidence(node);
+  const importance = Number(node.data.importance_score ?? node.data.confidence ?? confidence);
+  const centrality = density + Math.min(4, Object.keys(node.data).length / 3);
+  const weight = Math.max(0.35, Math.min(1.8, importance + centrality * 0.13));
+  const baseSize = node.type === "article" ? 13 + density * 2.2 + weight * 2.5 : node.type === "narrative" ? 19 + weight * 4 : 14 + weight * 3.2;
   return {
     ...node,
     color: focused ? "#f97316" : nodePalette[node.type] ?? "#67e8f9",
+    confidence,
     position,
-    size: focused ? Math.max(32, baseSize * 1.08) : baseSize
+    size: focused ? Math.max(34, baseSize * 1.12) : baseSize,
+    weight,
   };
 }
 
-function createNodeMesh(node: SceneNode, focused: boolean) {
+function createNodeMesh(node: SceneNode, focused: boolean, selected: boolean) {
   const geometry = new THREE.SphereGeometry(node.size, 32, 24);
   const material = new THREE.MeshStandardMaterial({
     color: node.color,
     emissive: node.color,
-    emissiveIntensity: focused ? 1.8 : node.type === "article" ? 1.2 : 0.75,
+    emissiveIntensity: focused || selected ? 1.95 : node.type === "article" ? 1.15 : 0.72,
     metalness: 0.15,
-    roughness: 0.22
+    roughness: 0.22,
+    transparent: true,
+    opacity: Math.max(0.38, Math.min(1, node.confidence)),
   });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.copy(node.position);
 
-  const glowGeometry = new THREE.SphereGeometry(node.size * (focused ? 1.42 : 1.5), 32, 24);
+  const glowGeometry = new THREE.SphereGeometry(node.size * (focused || selected ? 1.8 : 1.45), 32, 24);
   const glowMaterial = new THREE.MeshBasicMaterial({
     color: node.color,
     transparent: true,
-    opacity: focused ? 0.11 : 0.07,
+    opacity: focused || selected ? 0.16 : 0.06,
     blending: THREE.AdditiveBlending,
     depthWrite: false
   });
   const glow = new THREE.Mesh(glowGeometry, glowMaterial);
   mesh.add(glow);
 
-  if (node.type === "article" && !focused) {
+  if (node.type === "article" || selected) {
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(node.size * 1.65, 1.15, 10, 80),
+      new THREE.TorusGeometry(node.size * (selected ? 1.95 : 1.65), selected ? 1.7 : 1.15, 10, 88),
       new THREE.MeshBasicMaterial({
-        color: "#38bdf8",
+        color: selected ? "#fbbf24" : "#38bdf8",
         transparent: true,
-        opacity: 0.5,
+        opacity: selected ? 0.9 : 0.46,
         blending: THREE.AdditiveBlending,
         depthWrite: false
       })
@@ -547,18 +852,18 @@ function createNodeMesh(node: SceneNode, focused: boolean) {
 }
 
 function createEdgeObject(source: SceneNode, target: SceneNode, edge: GraphEdge): THREE.Object3D {
-  const midpoint = source.position.clone().add(target.position).multiplyScalar(0.5);
-  midpoint.y += 36 + source.position.distanceTo(target.position) * 0.1;
-  const curve = new THREE.QuadraticBezierCurve3(source.position, midpoint, target.position);
+  const curve = edgeCurve(source, target);
   const color = edgePalette[edge.label] ?? "#7dd3fc";
+  const strength = edgeStrength(edge);
+  const opacity = Math.max(0.16, Math.min(0.95, strength));
   if (routeEdgeTypes.has(edge.label)) {
     const group = new THREE.Group();
     group.userData.edgeId = edge.id;
-    const geometry = new THREE.TubeGeometry(curve, 44, edge.label === "same_event_as" ? 3.6 : 2.4, 10, false);
+    const geometry = new THREE.TubeGeometry(curve, 52, (edge.label === "same_event_as" ? 2.6 : 1.8) + strength * 2.2, 10, false);
     const material = new THREE.MeshBasicMaterial({
       color,
       transparent: true,
-      opacity: edge.label === "same_event_as" ? 0.78 : 0.54,
+      opacity: Math.max(0.48, opacity),
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
@@ -574,7 +879,7 @@ function createEdgeObject(source: SceneNode, target: SceneNode, edge: GraphEdge)
         new THREE.MeshBasicMaterial({
           color: index % 2 === 0 ? "#f97316" : color,
           transparent: true,
-          opacity: 0.92,
+          opacity,
           blending: THREE.AdditiveBlending,
           depthWrite: false
         })
@@ -591,10 +896,121 @@ function createEdgeObject(source: SceneNode, target: SceneNode, edge: GraphEdge)
   const material = new THREE.LineBasicMaterial({
     color,
     transparent: true,
-    opacity: 0.34,
+    opacity: Math.max(0.18, opacity * 0.48),
     blending: THREE.AdditiveBlending
   });
   return new THREE.Line(geometry, material);
+}
+
+function edgeCurve(source: SceneNode, target: SceneNode) {
+  const midpoint = source.position.clone().add(target.position).multiplyScalar(0.5);
+  midpoint.y += 36 + source.position.distanceTo(target.position) * 0.1;
+  return new THREE.QuadraticBezierCurve3(source.position, midpoint, target.position);
+}
+
+function createFlowParticles(source: SceneNode, target: SceneNode, edge: GraphEdge) {
+  const strength = edgeStrength(edge);
+  if (strength < 0.2) return [];
+  const curve = edgeCurve(source, target);
+  const color = edgePalette[edge.label] ?? "#7dd3fc";
+  const particleCount = routeEdgeTypes.has(edge.label) ? 3 : 1;
+  const items: Array<{ mesh: THREE.Mesh; curve: THREE.QuadraticBezierCurve3; speed: number; offset: number }> = [];
+  for (let index = 0; index < particleCount; index += 1) {
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(2.3 + strength * 2.5, 12, 8),
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.72,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    mesh.userData.edgeId = edge.id;
+    items.push({
+      mesh,
+      curve,
+      speed: 0.12 + strength * 0.32,
+      offset: index / particleCount,
+    });
+  }
+  return items;
+}
+
+function updateFlowParticles(
+  particles: Array<{ mesh: THREE.Mesh; curve: THREE.QuadraticBezierCurve3; speed: number; offset: number }>,
+  delta: number,
+) {
+  for (const item of particles) {
+    item.offset = (item.offset + delta * item.speed) % 1;
+    item.mesh.position.copy(item.curve.getPoint(item.offset));
+  }
+}
+
+function applyHoverState(
+  nodeMeshes: NodeMesh[],
+  edgeObjects: Array<{ edge: GraphEdge; object: THREE.Object3D }>,
+  neighborMap: Map<string, Set<string>>,
+  hoveredNodeId: string | null,
+  selectedNodeId: string | null,
+) {
+  const highlighted = new Set<string>();
+  if (hoveredNodeId) {
+    highlighted.add(hoveredNodeId);
+    (neighborMap.get(hoveredNodeId) ?? new Set<string>()).forEach((id) => highlighted.add(id));
+  }
+  if (selectedNodeId) {
+    highlighted.add(selectedNodeId);
+    (neighborMap.get(selectedNodeId) ?? new Set<string>()).forEach((id) => highlighted.add(id));
+  }
+
+  for (const mesh of nodeMeshes) {
+    const node = mesh.userData.graphNode;
+    const active = highlighted.size === 0 || highlighted.has(node.id);
+    mesh.scale.setScalar(active ? (node.id === hoveredNodeId ? 1.18 : 1) : 0.72);
+    const material = mesh.material;
+    if (!Array.isArray(material)) {
+      material.opacity = active ? Math.max(0.38, node.confidence) : 0.14;
+      material.needsUpdate = true;
+    }
+  }
+
+  for (const item of edgeObjects) {
+    const active = highlighted.size === 0 || highlighted.has(item.edge.source) || highlighted.has(item.edge.target);
+    item.object.traverse((object) => {
+      if (object instanceof THREE.Mesh || object instanceof THREE.Line) {
+        const material = object.material;
+        if (!Array.isArray(material)) {
+          material.opacity = active ? Math.max(0.24, edgeStrength(item.edge)) : 0.06;
+          material.needsUpdate = true;
+        }
+      }
+    });
+  }
+}
+
+function nodeConfidence(node: GraphNode) {
+  const value = Number(
+    node.data.confidence
+    ?? node.data.importance_score
+    ?? node.data.same_event_probability
+    ?? node.data.similarity
+    ?? node.data.score
+    ?? 0.82
+  );
+  return Number.isFinite(value) ? Math.max(0.18, Math.min(1, value)) : 0.82;
+}
+
+function edgeStrength(edge: GraphEdge) {
+  const value = Number(
+    edge.data.confidence
+    ?? edge.data.same_event_probability
+    ?? edge.data.similarity
+    ?? edge.data.score
+    ?? edge.data.importance_score
+    ?? (routeEdgeTypes.has(edge.label) ? 0.78 : 0.48)
+  );
+  return Number.isFinite(value) ? Math.max(0.05, Math.min(1, value)) : 0.48;
 }
 
 function addStarField(scene: THREE.Scene) {
@@ -647,6 +1063,9 @@ function updateHtmlLabels(
   labels: Array<{ element: HTMLDivElement; node: SceneNode }>,
   camera: THREE.PerspectiveCamera,
   renderer: THREE.WebGLRenderer,
+  labelDensity: number,
+  hoveredNodeId: string | null,
+  selectedNodeId: string | null,
 ) {
   const width = renderer.domElement.clientWidth;
   const height = renderer.domElement.clientHeight;
@@ -658,9 +1077,15 @@ function updateHtmlLabels(
     const x = (vector.x * 0.5 + 0.5) * width;
     const y = (-vector.y * 0.5 + 0.5) * height;
     const distance = camera.position.distanceTo(item.node.position);
-    const important = ["article", "source", "narrative"].includes(item.node.type) || labels.length <= 24;
+    const zoomFactor = distance < 420 ? 0.35 : distance < 720 ? 0.18 : 0;
+    const densityGate = labelDensity + zoomFactor;
+    const important = ["article", "source", "narrative"].includes(item.node.type)
+      || item.node.weight >= 1.08
+      || labels.length <= 18
+      || item.node.id === hoveredNodeId
+      || item.node.id === selectedNodeId;
     item.element.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -100%)`;
-    item.element.style.opacity = visible && (important || distance < 900) ? "1" : "0";
+    item.element.style.opacity = visible && (important || item.node.confidence <= densityGate) ? "1" : "0";
     item.element.style.zIndex = String(Math.max(1, Math.round(3000 - distance)));
   }
 }
@@ -732,6 +1157,16 @@ function translateNodeType(type: string) {
 
 function translateEdge(label: string) {
   return edgeLabels[label] ?? label;
+}
+
+function translateGraphMode(mode: GraphMode) {
+  const labels: Record<GraphMode, string> = {
+    article: "Article Mode",
+    event: "Event Mode",
+    narrative: "Narrative Mode",
+    divergence: "Divergence Mode",
+  };
+  return labels[mode];
 }
 
 function translateDataKey(key: string) {
