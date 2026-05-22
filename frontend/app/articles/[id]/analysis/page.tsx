@@ -7,10 +7,10 @@ import { ArticleAnalysisResponse, AnalysisEvidenceItem, getArticleAnalysis } fro
 import styles from "./page.module.css";
 
 const evidenceSections = [
-  { key: "framing", title: "Framing evidence" },
-  { key: "sympathy", title: "Sympathy evidence" },
-  { key: "criticism", title: "Criticism evidence" },
-  { key: "narrative", title: "Narrative evidence" }
+  { key: "framing", title: "Доказательства фрейминга" },
+  { key: "sympathy", title: "Доказательства симпатии" },
+  { key: "criticism", title: "Доказательства критики" },
+  { key: "narrative", title: "Доказательства нарратива" }
 ];
 
 export default function ArticleAnalysisPage() {
@@ -51,17 +51,17 @@ export default function ArticleAnalysisPage() {
       <header className={styles.header}>
         <div>
           <Link className={styles.backLink} href="/articles">
-            Back to articles
+            Назад к статьям
           </Link>
-          <p className={styles.eyebrow}>Article analysis</p>
-          <h1>Analysis #{analysis?.id ?? params.id}</h1>
+          <p className={styles.eyebrow}>Анализ статьи</p>
+          <h1>Анализ #{analysis?.id ?? params.id}</h1>
         </div>
         <Link className={styles.graphButton} href={`/articles/${articleId}/graph`}>
-          Open graph
+          Открыть граф
         </Link>
       </header>
 
-      {loading ? <div className={styles.state}>Loading analysis...</div> : null}
+      {loading ? <div className={styles.state}>Загружаю анализ...</div> : null}
       {error ? <div className={styles.error}>{error}</div> : null}
 
       {analysis ? (
@@ -69,25 +69,25 @@ export default function ArticleAnalysisPage() {
           <article className={styles.summaryCard}>
             <div className={styles.meta}>
               <span>{analysis.sentiment}</span>
-              <span>confidence {formatPercent(analysis.confidence)}</span>
+              <span>уверенность {formatPercent(analysis.confidence)}</span>
             </div>
-            <h2>Summary</h2>
+            <h2>Краткое резюме</h2>
             <p>{analysis.short_summary}</p>
-            <h3>Detailed summary</h3>
+            <h3>Подробное резюме</h3>
             <p>{analysis.detailed_summary}</p>
           </article>
 
           <section className={styles.findings}>
-            <Finding title="Stance" value={analysis.stance} />
-            <Finding title="Framing" value={analysis.framing} />
-            <Finding title="Sympathizes with" value={analysis.sympathizes_with.join(", ") || "Not specified"} />
-            <Finding title="Criticizes" value={analysis.criticizes.join(", ") || "Not specified"} />
-            <Finding title="Narrative hypothesis" value={analysis.narrative_hypothesis} wide />
+            <Finding title="Позиция" value={analysis.stance} />
+            <Finding title="Фрейминг" value={analysis.framing} />
+            <Finding title="Кому симпатизирует" value={analysis.sympathizes_with.join(", ") || "Не указано"} />
+            <Finding title="Кого критикует" value={analysis.criticizes.join(", ") || "Не указано"} />
+            <Finding title="Гипотеза нарратива" value={analysis.narrative_hypothesis} wide />
           </section>
 
           <section className={styles.explain}>
             <div className={styles.sectionHeader}>
-              <p className={styles.eyebrow}>Explainability</p>
+              <p className={styles.eyebrow}>Объяснимость</p>
               <h2>Почему система так решила?</h2>
             </div>
 
@@ -117,7 +117,7 @@ function EvidenceGroup({ items, title }: { items: AnalysisEvidenceItem[]; title:
     <article className={styles.evidenceGroup}>
       <h3>{title}</h3>
       {items.length === 0 ? (
-        <p className={styles.emptyEvidence}>No explicit evidence saved yet.</p>
+        <p className={styles.emptyEvidence}>Явные доказательства пока не сохранены.</p>
       ) : (
         <ul>
           {items.map((item) => (

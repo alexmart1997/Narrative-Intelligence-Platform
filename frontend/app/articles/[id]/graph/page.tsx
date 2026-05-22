@@ -8,53 +8,74 @@ import cytoscape, {
   StylesheetJson
 } from "cytoscape";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArticleGraphResponse, GraphNode, getArticleGraph } from "@/lib/api";
+import {
+  ArticleGraphResponse,
+  GraphEdge,
+  GraphNode,
+  analyzeArticle,
+  detectArticleEvent,
+  embedArticle,
+  getArticleGraph
+} from "@/lib/api";
 import styles from "./page.module.css";
 
 const nodeTypes = [
-  { type: "article", label: "Article" },
-  { type: "source", label: "Source" },
-  { type: "person", label: "Person" },
-  { type: "organization", label: "Organization" },
-  { type: "country", label: "Country" },
-  { type: "concept", label: "Concept" },
-  { type: "narrative", label: "Narrative" }
+  { type: "article", label: "Статья" },
+  { type: "source", label: "Источник" },
+  { type: "person", label: "Персона" },
+  { type: "organization", label: "Организация" },
+  { type: "country", label: "Страна" },
+  { type: "location", label: "Локация" },
+  { type: "concept", label: "Концепт" },
+  { type: "narrative", label: "Нарратив" }
 ];
+
+const edgeLabels: Record<string, string> = {
+  published_by: "опубликовано",
+  mentions: "упоминает",
+  relates_to: "связано с",
+  sympathizes_with: "симпатизирует",
+  criticizes: "критикует",
+  supports_narrative: "поддерживает нарратив",
+  same_event_as: "то же событие",
+  similar_to: "похожая статья",
+  shares_narrative: "общий нарратив"
+};
 
 export default function ArticleGraphPage() {
   const params = useParams<{ id: string }>();
-  const articleId = params.id;
+  const router = useRouter();
+  const initialArticleId = Number(params.id);
+  const [activeArticleId, setActiveArticleId] = useState(initialArticleId);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cyRef = useRef<Core | null>(null);
   const [graph, setGraph] = useState<ArticleGraphResponse | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
   const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const title = useMemo(() => {
-    const articleNode = graph?.nodes.find((node) => node.type === "article");
-    return articleNode?.label ?? `Article ${articleId}`;
-  }, [articleId, graph]);
+    const articleNode = graph?.nodes.find((node) => node.id === `article_${activeArticleId}`);
+    return articleNode?.label ?? `Статья ${activeArticleId}`;
+  }, [activeArticleId, graph]);
+
+  const relatedCount = useMemo(() => {
+    if (!graph) return 0;
+    return graph.nodes.filter((node) => node.type === "article" && node.id !== `article_${activeArticleId}`).length;
+  }, [activeArticleId, graph]);
 
   useEffect(() => {
-    async function loadGraph() {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await getArticleGraph(Number(articleId));
-        setGraph(data);
-        setSelectedNode(data.nodes.find((node) => node.type === "article") ?? null);
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Не удалось загрузить граф");
-      } finally {
-        setLoading(false);
-      }
-    }
+    setActiveArticleId(initialArticleId);
+  }, [initialArticleId]);
 
-    loadGraph();
-  }, [articleId]);
+  useEffect(() => {
+    loadGraph(activeArticleId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeArticleId]);
 
   useEffect(() => {
     if (!graph || !containerRef.current) {
@@ -64,51 +85,129 @@ export default function ArticleGraphPage() {
     cyRef.current?.destroy();
     const cy = cytoscape({
       container: containerRef.current,
-      elements: toElements(graph),
+      elements: toElements(graph, activeArticleId),
       style: graphStyles(),
       layout: {
-        name: "preset",
+        name: "cose",
+        animate: true,
+        animationDuration: 700,
         fit: true,
-        padding: 48
+        padding: 72,
+        nodeRepulsion: 120000,
+        idealEdgeLength: 150,
+        edgeElasticity: 90,
+        gravity: 0.08,
+        numIter: 900
       },
-      minZoom: 0.25,
-      maxZoom: 2.5,
-      wheelSensitivity: 0.18
+      minZoom: 0.18,
+      maxZoom: 3,
+      wheelSensitivity: 0.16
     });
 
     cy.on("tap", "node", (event: EventObject) => {
       const node = event.target as NodeSingular;
       const graphNode = graph.nodes.find((item) => item.id === node.id());
       setSelectedNode(graphNode ?? null);
+      setSelectedEdge(null);
+
+      // Клик по связанной статье переносит пользователя в ее собственный граф.
+      const nodeArticleId = Number(graphNode?.data?.article_id);
+      if (graphNode?.type === "article" && Number.isFinite(nodeArticleId) && nodeArticleId !== activeArticleId) {
+        setActiveArticleId(nodeArticleId);
+        router.replace(`/articles/${nodeArticleId}/graph`);
+      }
+    });
+
+    cy.on("tap", "edge", (event: EventObject) => {
+      const edgeId = event.target.id();
+      setSelectedEdge(graph.edges.find((item) => item.id === edgeId) ?? null);
+      setSelectedNode(null);
     });
 
     cy.on("tap", (event: EventObject) => {
       if (event.target === cy) {
         setSelectedNode(null);
+        setSelectedEdge(null);
       }
     });
 
     cyRef.current = cy;
     return () => cy.destroy();
-  }, [graph]);
+  }, [activeArticleId, graph, router]);
+
+  async function loadGraph(articleId: number) {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getArticleGraph(articleId, { includeRelated: true, limitRelated: 20 });
+      setGraph(data);
+      setSelectedEdge(null);
+      setSelectedNode(data.nodes.find((node) => node.id === `article_${articleId}`) ?? null);
+    } catch (caught) {
+      setGraph(null);
+      setSelectedNode(null);
+      setSelectedEdge(null);
+      setError(caught instanceof Error ? caught.message : "Не удалось загрузить граф");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function analyzeAndReload() {
+    setProcessing(true);
+    setError(null);
+    try {
+      await analyzeArticle(activeArticleId);
+      await embedArticle(activeArticleId);
+      await detectArticleEvent(activeArticleId);
+      await loadGraph(activeArticleId);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Не удалось выполнить анализ");
+    } finally {
+      setProcessing(false);
+    }
+  }
+
+  function rerunLayout() {
+    cyRef.current?.layout({
+      name: "cose",
+      animate: true,
+      animationDuration: 600,
+      fit: true,
+      padding: 72,
+      nodeRepulsion: 120000,
+      idealEdgeLength: 150,
+      gravity: 0.08,
+      numIter: 700
+    }).run();
+  }
 
   return (
     <main className={styles.page}>
       <header className={styles.header}>
         <div>
           <Link className={styles.backLink} href="/articles">
-            Back to articles
+            Назад к статьям
           </Link>
+          <p className={styles.eyebrow}>Интерактивная карта связей</p>
           <h1>{title}</h1>
         </div>
-        <div className={styles.stats}>
-          {graph ? `${graph.nodes.length} nodes · ${graph.edges.length} edges` : "Graph"}
+        <div className={styles.headerActions}>
+          <span className={styles.stats}>
+            {graph ? `${graph.nodes.length} узлов · ${graph.edges.length} связей · ${relatedCount} связанных статей` : "Граф"}
+          </span>
+          <button onClick={rerunLayout} disabled={!graph || loading}>
+            Перестроить
+          </button>
+          <button onClick={() => loadGraph(activeArticleId)} disabled={loading || processing}>
+            Обновить
+          </button>
         </div>
       </header>
 
       <section className={styles.shell}>
         <aside className={styles.legend}>
-          <h2>Legend</h2>
+          <h2>Легенда</h2>
           <ul>
             {nodeTypes.map((item) => (
               <li key={item.type}>
@@ -117,78 +216,116 @@ export default function ArticleGraphPage() {
               </li>
             ))}
           </ul>
+
+          <div className={styles.edgeLegend}>
+            <h3>Типы связей</h3>
+            {Object.entries(edgeLabels).map(([key, value]) => (
+              <span key={key}>{value}</span>
+            ))}
+          </div>
         </aside>
 
         <section className={styles.canvasWrap}>
-          {loading ? <div className={styles.state}>Loading graph...</div> : null}
-          {error ? <div className={styles.error}>{error}</div> : null}
-          <div ref={containerRef} className={styles.canvas} aria-label="Article graph canvas" />
+          {loading ? <div className={styles.state}>Загружаю граф...</div> : null}
+          {processing ? <div className={styles.state}>Выполняю анализ, embedding и event matching...</div> : null}
+          {error ? (
+            <div className={styles.error}>
+              <strong>{error}</strong>
+              {error.includes("LLM-анализ") || error.includes("Анализ статьи не найден") ? (
+                <button onClick={analyzeAndReload} disabled={processing}>
+                  {processing ? "Анализируется..." : "Запустить анализ и построить граф"}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          <div ref={containerRef} className={styles.canvas} aria-label="Интерактивный граф статьи" />
         </section>
 
         <aside className={styles.detailPanel}>
-          <h2>Node details</h2>
-          {selectedNode ? (
-            <div className={styles.details}>
-              <span className={`${styles.badge} ${styles[selectedNode.type]}`}>{selectedNode.type}</span>
-              <h3>{selectedNode.label}</h3>
-              <dl>
-                <dt>ID</dt>
-                <dd>{selectedNode.id}</dd>
-              </dl>
-              <pre>{JSON.stringify(selectedNode.data, null, 2)}</pre>
-            </div>
-          ) : (
-            <p className={styles.hint}>Click a node to inspect its details.</p>
-          )}
+          <h2>Детали</h2>
+          {selectedNode ? <NodeDetails node={selectedNode} currentArticleId={activeArticleId} /> : null}
+          {selectedEdge ? <EdgeDetails edge={selectedEdge} /> : null}
+          {!selectedNode && !selectedEdge ? (
+            <p className={styles.hint}>
+              Кликни по узлу или связи. Узлы можно перетаскивать, колесом менять масштаб,
+              а клик по связанной статье откроет ее собственную сеть.
+            </p>
+          ) : null}
         </aside>
       </section>
     </main>
   );
 }
 
-function toElements(graph: ArticleGraphResponse): ElementDefinition[] {
-  const positions = calculatePositions(graph.nodes);
+function NodeDetails({ currentArticleId, node }: { currentArticleId: number; node: GraphNode }) {
+  const articleId = Number(node.data.article_id);
+  return (
+    <div className={styles.details}>
+      <span className={`${styles.badge} ${styles[node.type]}`}>{translateNodeType(node.type)}</span>
+      <h3>{node.label}</h3>
+      {node.type === "article" && Number.isFinite(articleId) && articleId !== currentArticleId ? (
+        <p className={styles.hint}>Клик по этой статье перестроит граф вокруг нее.</p>
+      ) : null}
+      <dl>
+        <dt>ID</dt>
+        <dd>{node.id}</dd>
+        {Object.entries(node.data).map(([key, value]) => (
+          <DisplayValue key={key} label={translateDataKey(key)} value={value} />
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+function EdgeDetails({ edge }: { edge: GraphEdge }) {
+  return (
+    <div className={styles.details}>
+      <span className={styles.edgeBadge}>{translateEdge(edge.label)}</span>
+      <h3>{translateEdge(edge.label)}</h3>
+      <dl>
+        <dt>Откуда</dt>
+        <dd>{edge.source}</dd>
+        <dt>Куда</dt>
+        <dd>{edge.target}</dd>
+        {Object.entries(edge.data).map(([key, value]) => (
+          <DisplayValue key={key} label={translateDataKey(key)} value={value} />
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+function DisplayValue({ label, value }: { label: string; value: unknown }) {
+  if (value === null || value === undefined || value === "") return null;
+  return (
+    <>
+      <dt>{label}</dt>
+      <dd>{typeof value === "number" ? formatNumber(value) : String(value)}</dd>
+    </>
+  );
+}
+
+function toElements(graph: ArticleGraphResponse, activeArticleId: number): ElementDefinition[] {
   return [
     ...graph.nodes.map((node) => ({
       data: {
         id: node.id,
         label: node.label,
-        type: node.type
-      },
-      position: positions[node.id]
+        type: node.type,
+        focus: node.id === `article_${activeArticleId}` ? "true" : "false",
+        relationHint: typeof node.data.relation_hint === "string" ? node.data.relation_hint : ""
+      }
     })),
     ...graph.edges.map((edge) => ({
       data: {
         id: edge.id,
         source: edge.source,
         target: edge.target,
-        label: edge.data?.relation_type ? String(edge.data.relation_type) : edge.label,
+        label: edge.data?.relation_type ? String(edge.data.relation_type) : translateEdge(edge.label),
         edgeType: edge.label
       }
     }))
   ];
-}
-
-function calculatePositions(nodes: GraphNode[]) {
-  const positions: Record<string, { x: number; y: number }> = {};
-  const article = nodes.find((node) => node.type === "article");
-  const source = nodes.find((node) => node.type === "source");
-  const narrative = nodes.find((node) => node.type === "narrative");
-  const entities = nodes.filter((node) => !["article", "source", "narrative"].includes(node.type));
-
-  if (article) positions[article.id] = { x: 0, y: 0 };
-  if (source) positions[source.id] = { x: -360, y: -220 };
-  if (narrative) positions[narrative.id] = { x: 380, y: 260 };
-
-  const radius = Math.max(260, entities.length * 42);
-  entities.forEach((node, index) => {
-    const angle = (Math.PI * 2 * index) / Math.max(entities.length, 1) - Math.PI / 2;
-    positions[node.id] = {
-      x: Math.cos(angle) * radius,
-      y: Math.sin(angle) * radius
-    };
-  });
-  return positions;
 }
 
 function graphStyles(): StylesheetJson {
@@ -200,13 +337,15 @@ function graphStyles(): StylesheetJson {
         "border-color": "#ffffff",
         "border-width": 3,
         color: "#111827",
-        "font-size": 13,
+        "font-size": 12,
         "font-weight": 700,
         label: "data(label)",
+        "min-zoomed-font-size": 7,
+        "overlay-padding": 6,
         "text-background-color": "#ffffff",
-        "text-background-opacity": 0.88,
+        "text-background-opacity": 0.9,
         "text-background-padding": "4px",
-        "text-max-width": 140,
+        "text-max-width": 150,
         "text-wrap": "wrap",
         "text-valign": "bottom",
         "text-margin-y": 8,
@@ -218,11 +357,20 @@ function graphStyles(): StylesheetJson {
     {
       selector: 'node[type = "article"]',
       style: {
-        "background-color": "#2557d6",
-        color: "#0f172a",
-        height: 92,
+        "background-color": "#2563eb",
+        height: 82,
         shape: "round-rectangle",
-        width: 120
+        width: 118
+      }
+    },
+    {
+      selector: 'node[focus = "true"]',
+      style: {
+        "background-color": "#0f172a",
+        "border-color": "#38bdf8",
+        "border-width": 6,
+        height: 112,
+        width: 150
       }
     },
     {
@@ -239,15 +387,22 @@ function graphStyles(): StylesheetJson {
     {
       selector: 'node[type = "organization"]',
       style: {
-        "background-color": "#8b5cf6",
+        "background-color": "#7c3aed",
         shape: "round-rectangle"
       }
     },
     {
       selector: 'node[type = "country"]',
       style: {
-        "background-color": "#06b6d4",
+        "background-color": "#0891b2",
         shape: "hexagon"
+      }
+    },
+    {
+      selector: 'node[type = "location"]',
+      style: {
+        "background-color": "#0d9488",
+        shape: "tag"
       }
     },
     {
@@ -262,23 +417,69 @@ function graphStyles(): StylesheetJson {
       style: {
         "background-color": "#e11d48",
         shape: "round-tag",
-        width: 110
+        width: 120
+      }
+    },
+    {
+      selector: 'node[relationHint = "same_event"]',
+      style: {
+        "border-color": "#10b981",
+        "border-width": 5
+      }
+    },
+    {
+      selector: 'node[relationHint = "qdrant_similarity"]',
+      style: {
+        "border-color": "#38bdf8",
+        "border-width": 5
+      }
+    },
+    {
+      selector: 'node[relationHint = "narrative_similarity"]',
+      style: {
+        "border-color": "#f43f5e",
+        "border-width": 5
       }
     },
     {
       selector: "edge",
       style: {
         "curve-style": "bezier",
-        "font-size": 11,
+        "font-size": 10,
         "line-color": "#a8b3c7",
         "target-arrow-color": "#a8b3c7",
         "target-arrow-shape": "triangle",
         color: "#334155",
         label: "data(label)",
+        "min-zoomed-font-size": 7,
         "text-background-color": "#f7f8fb",
-        "text-background-opacity": 0.92,
+        "text-background-opacity": 0.94,
         "text-background-padding": "3px",
         width: 2
+      }
+    },
+    {
+      selector: 'edge[edgeType = "same_event_as"]',
+      style: {
+        "line-color": "#10b981",
+        "target-arrow-color": "#10b981",
+        width: 4
+      }
+    },
+    {
+      selector: 'edge[edgeType = "similar_to"]',
+      style: {
+        "line-color": "#38bdf8",
+        "target-arrow-color": "#38bdf8",
+        "line-style": "dashed"
+      }
+    },
+    {
+      selector: 'edge[edgeType = "shares_narrative"]',
+      style: {
+        "line-color": "#f43f5e",
+        "target-arrow-color": "#f43f5e",
+        "line-style": "dotted"
       }
     },
     {
@@ -296,11 +497,54 @@ function graphStyles(): StylesheetJson {
       }
     },
     {
-      selector: "node:selected",
+      selector: "node:selected, edge:selected",
       style: {
         "border-color": "#111827",
-        "border-width": 5
+        "line-color": "#111827",
+        "target-arrow-color": "#111827",
+        "border-width": 5,
+        width: 5
       }
     }
   ] as StylesheetJson;
+}
+
+function translateNodeType(type: string) {
+  return nodeTypes.find((item) => item.type === type)?.label ?? type;
+}
+
+function translateEdge(label: string) {
+  return edgeLabels[label] ?? label;
+}
+
+function translateDataKey(key: string) {
+  const labels: Record<string, string> = {
+    article_id: "ID статьи",
+    source_id: "ID источника",
+    source_name: "Источник",
+    entity_id: "ID сущности",
+    analysis_id: "ID анализа",
+    event_id: "ID события",
+    url: "Ссылка",
+    published_at: "Дата публикации",
+    language: "Язык",
+    role: "Роль",
+    importance_score: "Важность",
+    confidence: "Уверенность",
+    same_event_probability: "Вероятность того же события",
+    score: "Похожесть",
+    similarity: "Сходство нарратива",
+    relation_type: "Тип отношения",
+    description: "Описание",
+    relation_hint: "Причина связи",
+    synthetic: "Создано из вывода LLM",
+    polarity: "Полярность",
+    type: "Тип"
+  };
+  return labels[key] ?? key;
+}
+
+function formatNumber(value: number) {
+  if (value > 0 && value <= 1) return `${Math.round(value * 100)}%`;
+  return String(value);
 }

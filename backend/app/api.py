@@ -138,6 +138,8 @@ def list_articles(
             author=article.author,
             material_type=article.material_type.value,
             text_preview=article.text[:500],
+            has_analysis=article.analysis is not None,
+            has_event=len(article.events) > 0,
         )
         for article in articles
     ]

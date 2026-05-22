@@ -91,6 +91,7 @@
 }
 
 .error,
+.success,
 .loading,
 .empty {
   max-width: 1280px;
@@ -103,6 +104,14 @@
   border: 1px solid #f5b6b6;
   background: #fff1f1;
   color: #9f1239;
+}
+
+.success {
+  margin: 16px 0 0;
+  border: 1px solid #a7f3d0;
+  background: #ecfdf5;
+  color: #047857;
+  font-weight: 700;
 }
 
 .loading,
@@ -159,6 +168,16 @@
 
 .cardMeta a {
   color: var(--accent);
+}
+
+.readyBadge {
+  background: #ecfdf5 !important;
+  color: #047857 !important;
+}
+
+.waitBadge {
+  background: #fff7ed !important;
+  color: #c2410c !important;
 }
 
 .card h2 {

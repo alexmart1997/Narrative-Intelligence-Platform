@@ -12,6 +12,8 @@ export type ArticleListItem = {
   author: string | null;
   material_type: string;
   text_preview: string;
+  has_analysis: boolean;
+  has_event: boolean;
 };
 
 export type ArticleListResponse = {
@@ -194,10 +196,21 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(errorText || `Request failed with ${response.status}`);
+    throw new Error(extractErrorMessage(errorText) || `Запрос завершился ошибкой ${response.status}`);
   }
 
   return response.json() as Promise<T>;
+}
+
+function extractErrorMessage(errorText: string) {
+  if (!errorText) return "";
+  try {
+    const data = JSON.parse(errorText) as { detail?: unknown };
+    if (typeof data.detail === "string") return data.detail;
+    return errorText;
+  } catch {
+    return errorText;
+  }
 }
 
 export async function getSources(): Promise<SourceInfo[]> {
@@ -223,6 +236,14 @@ export async function analyzeArticle(articleId: number): Promise<void> {
   await request(`/articles/${articleId}/analyze`, { method: "POST" });
 }
 
+export async function embedArticle(articleId: number): Promise<void> {
+  await request(`/articles/${articleId}/embed`, { method: "POST" });
+}
+
+export async function detectArticleEvent(articleId: number): Promise<void> {
+  await request(`/articles/${articleId}/detect-event`, { method: "POST" });
+}
+
 export async function getArticleAnalysis(articleId: number): Promise<ArticleAnalysisResponse> {
   return request<ArticleAnalysisResponse>(`/articles/${articleId}/analysis`);
 }
@@ -231,8 +252,15 @@ export async function getArticleEvidence(articleId: number): Promise<Record<stri
   return request<Record<string, AnalysisEvidenceItem[]>>(`/articles/${articleId}/evidence`);
 }
 
-export async function getArticleGraph(articleId: number): Promise<ArticleGraphResponse> {
-  return request<ArticleGraphResponse>(`/graph/article/${articleId}`);
+export async function getArticleGraph(
+  articleId: number,
+  options: { includeRelated?: boolean; limitRelated?: number } = {}
+): Promise<ArticleGraphResponse> {
+  const params = new URLSearchParams();
+  if (options.includeRelated) params.set("include_related", "true");
+  if (options.limitRelated) params.set("limit_related", String(options.limitRelated));
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return request<ArticleGraphResponse>(`/graph/article/${articleId}${suffix}`);
 }
 
 export async function getSimilarArticles(articleId: number): Promise<SimilarArticlesResponse> {

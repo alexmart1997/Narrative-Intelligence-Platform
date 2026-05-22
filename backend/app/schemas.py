@@ -48,6 +48,8 @@ class ArticleListItem(BaseModel):
     author: Optional[str]
     material_type: str
     text_preview: str
+    has_analysis: bool
+    has_event: bool
 
 
 class ArticleListResponse(BaseModel):

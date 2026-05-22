@@ -8,6 +8,8 @@ import {
   SimilarArticleItem,
   SourceInfo,
   analyzeArticle,
+  detectArticleEvent,
+  embedArticle,
   getArticles,
   getSimilarArticles,
   getSources
@@ -31,6 +33,8 @@ export default function ArticlesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionState, setActionState] = useState<ActionState>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [noticeByArticle, setNoticeByArticle] = useState<Record<number, string>>({});
   const [similarByArticle, setSimilarByArticle] = useState<Record<number, SimilarArticleItem[]>>({});
 
   const languages = useMemo(() => ["ru", "en"], []);
@@ -59,14 +63,25 @@ export default function ArticlesPage() {
 
   async function handleAnalyze(articleId: number) {
     setActionState({ articleId, action: "analyze" });
+    setActionMessage("Запускаю LLM-анализ...");
     setError(null);
+    setNoticeByArticle((current) => ({ ...current, [articleId]: "" }));
     try {
       await analyzeArticle(articleId);
+      setActionMessage("Создаю embedding для поиска похожих материалов...");
+      await embedArticle(articleId);
+      setActionMessage("Пробую связать статью с событием...");
+      await detectArticleEvent(articleId);
       await loadArticles();
+      setNoticeByArticle((current) => ({
+        ...current,
+        [articleId]: "Анализ готов: добавлены сущности, нарратив, embedding и связь с событием."
+      }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось выполнить анализ");
     } finally {
       setActionState(null);
+      setActionMessage(null);
     }
   }
 
@@ -97,13 +112,13 @@ export default function ArticlesPage() {
 
   function actionLabel(articleId: number, action: ArticleAction) {
     if (actionState?.articleId === articleId && actionState.action === action) {
-      return "Loading...";
+      return action === "analyze" ? "Анализируется..." : "Загрузка...";
     }
-    if (action === "analysis") return "Open analysis";
-    if (action === "analyze") return "Analyze";
-    if (action === "compare") return "Compare";
-    if (action === "graph") return "Open graph";
-    return "Find similar";
+    if (action === "analysis") return "Открыть анализ";
+    if (action === "analyze") return "Анализировать";
+    if (action === "compare") return "Сравнить";
+    if (action === "graph") return "Открыть граф";
+    return "Найти похожие";
   }
 
   return (
@@ -111,18 +126,18 @@ export default function ArticlesPage() {
       <section className={styles.header}>
         <div>
           <p className={styles.eyebrow}>Narrative Intelligence</p>
-          <h1>Articles</h1>
+          <h1>Статьи</h1>
         </div>
         <button className={styles.primaryButton} onClick={loadArticles} disabled={loading}>
-          {loading ? "Loading..." : "Refresh"}
+          {loading ? "Загрузка..." : "Обновить"}
         </button>
       </section>
 
       <section className={styles.filters} aria-label="Article filters">
         <label>
-          Source
+          Источник
           <select value={sourceCode} onChange={(event) => setSourceCode(event.target.value)}>
-            <option value="">All sources</option>
+            <option value="">Все источники</option>
             {sources.map((source) => (
               <option key={source.code} value={source.code}>
                 {source.name}
@@ -132,9 +147,9 @@ export default function ArticlesPage() {
         </label>
 
         <label>
-          Language
+          Язык
           <select value={language} onChange={(event) => setLanguage(event.target.value)}>
-            <option value="">All languages</option>
+            <option value="">Все языки</option>
             {languages.map((item) => (
               <option key={item} value={item}>
                 {item}
@@ -144,27 +159,28 @@ export default function ArticlesPage() {
         </label>
 
         <label className={styles.searchLabel}>
-          Search title/text
+          Поиск по заголовку и тексту
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="e.g. elections, Молдавия, Meta"
+            placeholder="например: выборы, Молдавия, НАТО"
           />
         </label>
 
         <button className={styles.primaryButton} onClick={loadArticles} disabled={loading}>
-          Apply
+          Применить
         </button>
       </section>
 
       {error ? <div className={styles.error}>{error}</div> : null}
+      {actionMessage ? <div className={styles.loading}>{actionMessage}</div> : null}
 
       <section className={styles.content}>
         <div className={styles.list}>
           {loading ? (
-            <div className={styles.loading}>Loading articles...</div>
+            <div className={styles.loading}>Загружаю статьи...</div>
           ) : articles.length === 0 ? (
-            <div className={styles.empty}>No articles found.</div>
+            <div className={styles.empty}>Статьи не найдены.</div>
           ) : (
             articles.map((article) => (
               <article className={styles.card} key={article.id}>
@@ -176,6 +192,10 @@ export default function ArticlesPage() {
                   )}
                   <span>{article.language}</span>
                   <span>{formatDate(article.published_at)}</span>
+                  <span className={article.has_analysis ? styles.readyBadge : styles.waitBadge}>
+                    {article.has_analysis ? "анализ готов" : "без анализа"}
+                  </span>
+                  {article.has_event ? <span className={styles.readyBadge}>есть событие</span> : null}
                 </div>
                 <h2>{article.title}</h2>
                 <p>{article.text_preview}</p>
@@ -211,11 +231,14 @@ export default function ArticlesPage() {
                     {actionLabel(article.id, "similar")}
                   </button>
                 </div>
+                {noticeByArticle[article.id] ? (
+                  <div className={styles.success}>{noticeByArticle[article.id]}</div>
+                ) : null}
                 {similarByArticle[article.id] ? (
                   <div className={styles.similar}>
-                    <h3>Similar articles</h3>
+                    <h3>Похожие статьи</h3>
                     {similarByArticle[article.id].length === 0 ? (
-                      <p>No similar articles yet.</p>
+                      <p>Похожие статьи пока не найдены. Сначала нужны embedding-и в Qdrant.</p>
                     ) : (
                       <ul>
                         {similarByArticle[article.id].map((item) => (
@@ -234,10 +257,10 @@ export default function ArticlesPage() {
         </div>
 
         <aside className={styles.graphPanel}>
-          <h2>Graph view</h2>
+          <h2>Граф связей</h2>
           <p>
-            Use <strong>Open graph</strong> to inspect the article, source,
-            entities, narrative and relations in an interactive canvas.
+            Открой граф, чтобы увидеть источник, участников, нарратив,
+            связи с похожими материалами и статьи того же события.
           </p>
         </aside>
       </section>
