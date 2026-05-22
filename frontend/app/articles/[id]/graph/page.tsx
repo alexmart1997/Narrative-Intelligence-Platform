@@ -229,6 +229,12 @@ export default function ArticleGraphPage() {
 
         <aside className={styles.detailPanel}>
           <h2>Детали</h2>
+          <div className={styles.readingGuide}>
+            <strong>Как читать сцену</strong>
+            <p>Шарик = объект анализа: статья, источник, участник или нарратив.</p>
+            <p>Размер статьи = плотность: сколько вокруг нее события, evidence, сущностей и связей.</p>
+            <p>Дуга = тип связи. Яркие дуги показывают то же событие или общий нарратив.</p>
+          </div>
           {selectedNode ? <NodeDetails node={selectedNode} currentArticleId={activeArticleId} /> : null}
           {selectedEdge ? <EdgeDetails edge={selectedEdge} /> : null}
           {!selectedNode && !selectedEdge ? (
@@ -272,6 +278,10 @@ function createThreeGraphScene({
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   container.replaceChildren(renderer.domElement);
 
+  const labelLayer = document.createElement("div");
+  labelLayer.className = styles.labelLayer;
+  container.appendChild(labelLayer);
+
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
@@ -291,7 +301,7 @@ function createThreeGraphScene({
   scene.add(warmLight);
 
   const nodeMeshes: NodeMesh[] = [];
-  const labelSprites: THREE.Sprite[] = [];
+  const labelItems: Array<{ element: HTMLDivElement; node: SceneNode }> = [];
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
   const edgeObjects: Array<{ edge: GraphEdge; line: THREE.Line }> = [];
@@ -314,19 +324,14 @@ function createThreeGraphScene({
     scene.add(mesh);
     nodeMeshes.push(mesh);
 
-    if (node.type === "article" || node.type === "source" || node.type === "narrative") {
-      const label = createTextSprite(shortLabel(node.label), node.color);
-      label.position.copy(node.position).add(new THREE.Vector3(0, node.size + 18, 0));
-      scene.add(label);
-      labelSprites.push(label);
-    }
+    const label = createHtmlLabel(node);
+    labelLayer.appendChild(label);
+    labelItems.push({ element: label, node });
   }
 
   function render() {
     controls.update();
-    for (const sprite of labelSprites) {
-      sprite.quaternion.copy(camera.quaternion);
-    }
+    updateHtmlLabels(labelItems, camera, renderer);
     renderer.render(scene, camera);
     animationId = requestAnimationFrame(render);
   }
@@ -511,30 +516,49 @@ function addDepthRings(scene: THREE.Scene) {
   }
 }
 
-function createTextSprite(text: string, color: string) {
-  const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
-  canvas.width = 512;
-  canvas.height = 128;
-  if (context) {
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    context.font = "700 28px Arial";
-    context.fillStyle = "rgba(2, 6, 23, 0.62)";
-    context.fillRect(0, 28, canvas.width, 58);
-    context.fillStyle = color;
-    context.shadowColor = color;
-    context.shadowBlur = 16;
-    context.fillText(text, 18, 66, 476);
+function createHtmlLabel(node: SceneNode) {
+  const element = document.createElement("div");
+  element.className = `${styles.nodeLabel} ${styles[`label_${node.type}`] ?? ""}`;
+  element.innerHTML = `
+    <span>${translateNodeType(node.type)}</span>
+    <strong>${escapeHtml(shortLabel(node.label))}</strong>
+  `;
+  return element;
+}
+
+function updateHtmlLabels(
+  labels: Array<{ element: HTMLDivElement; node: SceneNode }>,
+  camera: THREE.PerspectiveCamera,
+  renderer: THREE.WebGLRenderer,
+) {
+  const width = renderer.domElement.clientWidth;
+  const height = renderer.domElement.clientHeight;
+  for (const item of labels) {
+    const vector = item.node.position.clone();
+    vector.y += item.node.size + 22;
+    vector.project(camera);
+    const visible = vector.z < 1;
+    const x = (vector.x * 0.5 + 0.5) * width;
+    const y = (-vector.y * 0.5 + 0.5) * height;
+    const distance = camera.position.distanceTo(item.node.position);
+    const important = ["article", "source", "narrative"].includes(item.node.type) || labels.length <= 24;
+    item.element.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -100%)`;
+    item.element.style.opacity = visible && (important || distance < 900) ? "1" : "0";
+    item.element.style.zIndex = String(Math.max(1, Math.round(3000 - distance)));
   }
-  const texture = new THREE.CanvasTexture(canvas);
-  const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
-  const sprite = new THREE.Sprite(material);
-  sprite.scale.set(150, 38, 1);
-  return sprite;
 }
 
 function shortLabel(value: string) {
-  return value.length > 52 ? `${value.slice(0, 49)}...` : value;
+  return value.length > 58 ? `${value.slice(0, 55)}...` : value;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function NodeDetails({ currentArticleId, node }: { currentArticleId: number; node: GraphNode }) {

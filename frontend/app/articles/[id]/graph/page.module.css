@@ -132,6 +132,79 @@
   min-height: calc(100vh - 85px);
 }
 
+.labelLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.nodeLabel {
+  position: absolute;
+  display: grid;
+  min-width: 118px;
+  max-width: 240px;
+  gap: 3px;
+  padding: 7px 9px;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  border-left: 3px solid #67e8f9;
+  border-radius: 8px;
+  background: rgba(3, 7, 18, 0.78);
+  box-shadow: 0 14px 34px rgb(0 0 0 / 36%);
+  color: #e2e8f0;
+  font-size: 12px;
+  line-height: 1.25;
+  text-shadow: 0 1px 0 rgb(0 0 0 / 42%);
+  transition: opacity 160ms ease;
+  backdrop-filter: blur(14px);
+}
+
+.nodeLabel span {
+  color: #94a3b8;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.nodeLabel strong {
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.label_article {
+  border-left-color: #38bdf8;
+}
+
+.label_source {
+  border-left-color: #a7f3d0;
+}
+
+.label_person {
+  border-left-color: #fbbf24;
+}
+
+.label_organization {
+  border-left-color: #c084fc;
+}
+
+.label_country {
+  border-left-color: #22d3ee;
+}
+
+.label_location {
+  border-left-color: #2dd4bf;
+}
+
+.label_concept {
+  border-left-color: #e0f2fe;
+}
+
+.label_narrative {
+  border-left-color: #fb7185;
+}
+
 .legend,
 .edgeLegend,
 .sceneMeta,
@@ -292,6 +365,28 @@
   margin: 0 0 18px;
   color: #f8fafc;
   font-size: 18px;
+}
+
+.readingGuide {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 12px;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.52);
+}
+
+.readingGuide strong {
+  color: #f8fafc;
+  font-size: 13px;
+}
+
+.readingGuide p {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .details {
