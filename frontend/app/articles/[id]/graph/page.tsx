@@ -402,19 +402,27 @@ function buildSceneNodes(graph: ArticleGraphResponse, activeArticleId: number): 
   const activeId = `article_${activeArticleId}`;
   const relatedArticles = graph.nodes.filter((node) => node.type === "article" && node.id !== activeId);
   const entities = graph.nodes.filter((node) => !["article", "source", "narrative"].includes(node.type));
-  const source = graph.nodes.find((node) => node.type === "source");
-  const narrative = graph.nodes.find((node) => node.type === "narrative");
+  const sources = graph.nodes.filter((node) => node.type === "source");
+  const narratives = graph.nodes.filter((node) => node.type === "narrative");
   const active = graph.nodes.find((node) => node.id === activeId);
   const result: SceneNode[] = [];
 
   if (active) result.push(toSceneNode(active, new THREE.Vector3(0, 0, 0), true));
-  if (source) result.push(toSceneNode(source, new THREE.Vector3(-230, 75, -90), false));
-  if (narrative) result.push(toSceneNode(narrative, new THREE.Vector3(250, -80, -120), false));
+
+  sources.forEach((node, index) => {
+    const spread = (index - (sources.length - 1) / 2) * 95;
+    result.push(toSceneNode(node, new THREE.Vector3(-260, 80 + spread, -110 - index * 28), false));
+  });
+
+  narratives.forEach((node, index) => {
+    const spread = (index - (narratives.length - 1) / 2) * 110;
+    result.push(toSceneNode(node, new THREE.Vector3(280, -70 + spread, -130 + index * 36), false));
+  });
 
   entities.forEach((node, index) => {
     const angle = (index / Math.max(entities.length, 1)) * Math.PI * 2;
-    const radius = 190 + (index % 3) * 44;
-    const y = Math.sin(index * 1.73) * 76;
+    const radius = 210 + (index % 4) * 42;
+    const y = Math.sin(index * 1.73) * 96;
     result.push(toSceneNode(node, new THREE.Vector3(Math.cos(angle) * radius, y, Math.sin(angle) * radius), false));
   });
 

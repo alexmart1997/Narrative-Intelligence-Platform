@@ -171,6 +171,18 @@ def _add_related_articles(
     """Добавляет в граф статьи того же события, похожие статьи и похожие нарративы."""
 
     added_counts: dict[str, int] = {"same_event_as": 0, "similar_to": 0, "shares_narrative": 0}
+    expanded_article_ids: set[int] = set()
+
+    def expand_related_article(related_article: Article, related_node_id: str) -> None:
+        if related_article.id in expanded_article_ids:
+            return
+        expanded_article_ids.add(related_article.id)
+        _add_related_article_context(
+            add_node=add_node,
+            add_edge=add_edge,
+            article=related_article,
+            article_node_id=related_node_id,
+        )
 
     for event_link in article.events:
         for related_link in event_link.event.articles:
@@ -178,6 +190,7 @@ def _add_related_articles(
                 continue
             related_article = related_link.article
             related_node_id = _add_related_article_node(add_node, related_article, "same_event")
+            expand_related_article(related_article, related_node_id)
             add_edge(
                 base_article_node_id,
                 related_node_id,
@@ -198,6 +211,7 @@ def _add_related_articles(
         if related_article is None:
             continue
         related_node_id = _add_related_article_node(add_node, related_article, "qdrant_similarity")
+        expand_related_article(related_article, related_node_id)
         add_edge(
             base_article_node_id,
             related_node_id,
@@ -211,6 +225,7 @@ def _add_related_articles(
     for related_analysis, score in _similar_narrative_analyses(db, article, limit):
         related_article = related_analysis.article
         related_node_id = _add_related_article_node(add_node, related_article, "narrative_similarity")
+        expand_related_article(related_article, related_node_id)
         add_edge(
             base_article_node_id,
             related_node_id,
@@ -234,6 +249,86 @@ def _add_related_article_node(add_node: Any, article: Article, relation_hint: st
         },
     )
     return node_id
+
+
+def _add_related_article_context(
+    add_node: Any,
+    add_edge: Any,
+    article: Article,
+    article_node_id: str,
+) -> None:
+    """Добавляет мини-окружение связанной статьи, чтобы граф был бесшовным."""
+
+    if article.source:
+        source_node_id = f"source_{article.source_id}"
+        add_node(
+            source_node_id,
+            article.source.name,
+            "source",
+            {
+                "source_id": article.source_id,
+                "url": article.source.url,
+                "context_for_article_id": article.id,
+            },
+        )
+        add_edge(article_node_id, source_node_id, "published_by", {"type": "published_by", "related_context": True})
+
+    # Для соседней статьи берем только самые важные сущности, иначе локальная
+    # сцена быстро превращается в нечитаемый комок.
+    related_entities = sorted(
+        article.entities,
+        key=lambda item: item.importance_score or 0,
+        reverse=True,
+    )[:5]
+    for item in related_entities:
+        entity = item.entity
+        node_type = entity.type.value if entity.type.value in _allowed_node_types() else "concept"
+        entity_node_id = f"entity_{entity.id}"
+        add_node(
+            entity_node_id,
+            entity.name,
+            node_type,
+            {
+                "entity_id": entity.id,
+                "role": item.role,
+                "importance_score": item.importance_score,
+                "context_for_article_id": article.id,
+            },
+        )
+        add_edge(
+            article_node_id,
+            entity_node_id,
+            "mentions",
+            {
+                "type": "mentions",
+                "role": item.role,
+                "importance_score": item.importance_score,
+                "related_context": True,
+            },
+        )
+
+    if article.analysis and article.analysis.narrative_hypothesis:
+        narrative_node_id = f"narrative_{article.analysis.id}"
+        add_node(
+            narrative_node_id,
+            article.analysis.narrative_hypothesis,
+            "narrative",
+            {
+                "analysis_id": article.analysis.id,
+                "confidence": article.analysis.confidence,
+                "context_for_article_id": article.id,
+            },
+        )
+        add_edge(
+            article_node_id,
+            narrative_node_id,
+            "supports_narrative",
+            {
+                "type": "supports_narrative",
+                "confidence": article.analysis.confidence,
+                "related_context": True,
+            },
+        )
 
 
 def _article_density_data(article: Article) -> dict[str, Any]:
