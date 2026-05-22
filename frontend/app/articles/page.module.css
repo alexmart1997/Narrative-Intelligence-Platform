@@ -149,10 +149,16 @@
   font-weight: 700;
 }
 
-.cardMeta span {
+.cardMeta span,
+.cardMeta a {
   padding: 5px 8px;
   border-radius: 999px;
   background: #eef2f7;
+  color: var(--muted);
+}
+
+.cardMeta a {
+  color: var(--accent);
 }
 
 .card h2 {

@@ -153,6 +153,30 @@ export type NarrativeDetailResponse = Omit<NarrativeListItem, "evidence_count"> 
   evidence: NarrativeEvidenceItem[];
 };
 
+export type SourceProfileResponse = {
+  source: {
+    id: number;
+    code: string | null;
+    name: string;
+    url: string;
+    country: string;
+    political_orientation: string | null;
+  };
+  period: {
+    date_from: string | null;
+    date_to: string | null;
+    language: string | null;
+  };
+  articles_count: number;
+  top_entities: Array<{ name: string; type: string; count: number }>;
+  top_narratives: Array<{ title: string; count: number }>;
+  top_narrative_hypotheses: Array<{ text: string; count: number }>;
+  sentiment_distribution: Record<"positive" | "negative" | "neutral" | "mixed", number>;
+  top_framings: Array<{ framing: string; count: number }>;
+  sympathizes_with_top: Array<{ target: string; count: number }>;
+  criticizes_top: Array<{ target: string; count: number }>;
+};
+
 type ArticleFilters = {
   sourceCode?: string;
   language?: string;
@@ -229,4 +253,16 @@ export async function getNarrative(narrativeId: number): Promise<NarrativeDetail
 
 export async function getNarrativeGraph(narrativeId: number): Promise<ArticleGraphResponse> {
   return request<ArticleGraphResponse>(`/graph/narrative/${narrativeId}`);
+}
+
+export async function getSourceProfile(
+  sourceCode: string,
+  filters: { dateFrom?: string; dateTo?: string; language?: string } = {}
+): Promise<SourceProfileResponse> {
+  const params = new URLSearchParams();
+  if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+  if (filters.dateTo) params.set("date_to", filters.dateTo);
+  if (filters.language) params.set("language", filters.language);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return request<SourceProfileResponse>(`/sources/${sourceCode}/profile${suffix}`);
 }

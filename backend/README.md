@@ -113,3 +113,17 @@ curl -X POST http://localhost:8000/pipeline/process-articles \
 ```bash
 curl http://localhost:8000/pipeline/status
 ```
+
+## Source Profile Analytics
+
+Профиль источника:
+
+```bash
+curl "http://localhost:8000/sources/rbc/profile"
+```
+
+Профиль источника с фильтрами:
+
+```bash
+curl "http://localhost:8000/sources/rbc/profile?date_from=2026-05-01&date_to=2026-05-30&language=ru"
+```

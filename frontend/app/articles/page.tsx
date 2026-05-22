@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -168,7 +169,11 @@ export default function ArticlesPage() {
             articles.map((article) => (
               <article className={styles.card} key={article.id}>
                 <div className={styles.cardMeta}>
-                  <span>{article.source_name}</span>
+                  {article.source_code ? (
+                    <Link href={`/sources/${article.source_code}/profile`}>{article.source_name}</Link>
+                  ) : (
+                    <span>{article.source_name}</span>
+                  )}
                   <span>{article.language}</span>
                   <span>{formatDate(article.published_at)}</span>
                 </div>

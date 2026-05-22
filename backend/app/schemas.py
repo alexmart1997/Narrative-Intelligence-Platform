@@ -311,3 +311,57 @@ class PipelineRunResponse(BaseModel):
     failed: int
     params: dict
     result: Optional[PipelineProcessResponse]
+
+
+class SourceProfileSource(BaseModel):
+    id: int
+    code: Optional[str]
+    name: str
+    url: str
+    country: str
+    political_orientation: Optional[str]
+
+
+class SourceProfilePeriod(BaseModel):
+    date_from: Optional[date]
+    date_to: Optional[date]
+    language: Optional[str]
+
+
+class SourceEntityStat(BaseModel):
+    name: str
+    type: str
+    count: int
+
+
+class SourceNarrativeStat(BaseModel):
+    title: str
+    count: int
+
+
+class SourceNarrativeHypothesisStat(BaseModel):
+    text: str
+    count: int
+
+
+class SourceFramingStat(BaseModel):
+    framing: str
+    count: int
+
+
+class SourceTargetStat(BaseModel):
+    target: str
+    count: int
+
+
+class SourceProfileResponse(BaseModel):
+    source: SourceProfileSource
+    period: SourceProfilePeriod
+    articles_count: int
+    top_entities: list[SourceEntityStat]
+    top_narratives: list[SourceNarrativeStat]
+    top_narrative_hypotheses: list[SourceNarrativeHypothesisStat]
+    sentiment_distribution: dict[str, int]
+    top_framings: list[SourceFramingStat]
+    sympathizes_with_top: list[SourceTargetStat]
+    criticizes_top: list[SourceTargetStat]

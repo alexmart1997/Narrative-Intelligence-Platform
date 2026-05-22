@@ -291,6 +291,26 @@ curl "http://localhost:8000/events"
 curl "http://localhost:8000/articles/1/analysis"
 ```
 
+## Source Profile Analytics
+
+Профиль источника показывает, какие сущности, фреймы, нарративы, гипотезы нарратива и тональность чаще встречаются у выбранного СМИ:
+
+```bash
+curl "http://localhost:8000/sources/rbc/profile"
+```
+
+С фильтрами:
+
+```bash
+curl "http://localhost:8000/sources/rbc/profile?date_from=2026-05-01&date_to=2026-05-30&language=ru"
+```
+
+Во frontend профиль доступен по адресу:
+
+```text
+http://localhost:3000/sources/rbc/profile
+```
+
 ## Векторизация и похожие статьи
 
 Для embeddings используется легкая мультиязычная модель `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`. Она подходит для MacBook и работает с русскими и английскими текстами.

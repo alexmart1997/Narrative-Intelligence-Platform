@@ -24,6 +24,7 @@ from app.llm import LlmError, call_llm
 from app.models import AnalysisEvidence, ArticleAnalysis, Event, Narrative
 from app.narratives import NarrativeDiscoveryError, build_narrative_graph, discover_narratives
 from app.pipeline import PipelineError, latest_pipeline_run, pipeline_run_to_dict, process_articles_pipeline
+from app.source_profile import SourceProfileError, build_source_profile
 from app.schemas import (
     AnalysisEntityItem,
     AnalysisEvidenceItem,
@@ -55,6 +56,7 @@ from app.schemas import (
     PipelineProcessResponse,
     PipelineRunResponse,
     SimilarArticlesResponse,
+    SourceProfileResponse,
     SourceInfo,
 )
 from app.vector import VectorError, embed_all_articles, embed_article, find_similar_articles
@@ -140,6 +142,28 @@ def list_articles(
         for article in articles
     ]
     return ArticleListResponse(items=items, count=len(items))
+
+
+@router.get("/sources/{source_code}/profile", response_model=SourceProfileResponse)
+def source_profile_endpoint(
+    source_code: str,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    language: Optional[str] = None,
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Возвращает аналитический профиль источника по уже сохраненным анализам."""
+
+    try:
+        return build_source_profile(
+            db=db,
+            source_code=source_code,
+            date_from=date_from,
+            date_to=date_to,
+            language=language,
+        )
+    except SourceProfileError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/llm/test", response_model=LlmTestResponse)
