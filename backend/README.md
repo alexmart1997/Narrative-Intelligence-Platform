@@ -89,3 +89,27 @@ curl http://localhost:8000/articles/1/evidence
 ```
 
 `GET /articles/{id}/analysis` также возвращает analysis вместе с evidence, сгруппированными по `evidence_type`.
+
+## Batch pipeline
+
+Массовая локальная обработка статей без Celery и очередей:
+
+```bash
+curl -X POST http://localhost:8000/pipeline/process-articles \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_code": null,
+    "date_from": null,
+    "date_to": null,
+    "language": null,
+    "only_without_analysis": true,
+    "limit": 100,
+    "steps": ["analyze", "embed", "detect_event"]
+  }'
+```
+
+Проверить последний запуск:
+
+```bash
+curl http://localhost:8000/pipeline/status
+```

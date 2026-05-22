@@ -41,6 +41,26 @@ class MaterialType(str, enum.Enum):
     unknown = "unknown"
 
 
+class PipelineRun(Base):
+    """Последний/исторический запуск локального batch pipeline."""
+
+    __tablename__ = "pipeline_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    selected_articles: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
+    processed: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
+    failed: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
+    params_json: Mapped[str] = mapped_column(Text, nullable=False)
+    result_json: Mapped[Optional[str]] = mapped_column(Text)
+
+
 class Source(Base):
     """Источник публикаций: СМИ, сайт, канал или другой поставщик текстов."""
 

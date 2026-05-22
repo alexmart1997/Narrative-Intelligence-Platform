@@ -23,6 +23,7 @@ from app.config import settings
 from app.llm import LlmError, call_llm
 from app.models import AnalysisEvidence, ArticleAnalysis, Event, Narrative
 from app.narratives import NarrativeDiscoveryError, build_narrative_graph, discover_narratives
+from app.pipeline import PipelineError, latest_pipeline_run, pipeline_run_to_dict, process_articles_pipeline
 from app.schemas import (
     AnalysisEntityItem,
     AnalysisEvidenceItem,
@@ -50,6 +51,9 @@ from app.schemas import (
     NarrativeDiscoveryResponse,
     NarrativeEvidenceItem,
     NarrativeListItem,
+    PipelineProcessRequest,
+    PipelineProcessResponse,
+    PipelineRunResponse,
     SimilarArticlesResponse,
     SourceInfo,
 )
@@ -353,6 +357,29 @@ def event_graph_endpoint(
         return build_event_graph(db, event_id)
     except EventDetectionError as exc:
         raise _event_http_error(exc) from exc
+
+
+@router.post("/pipeline/process-articles", response_model=PipelineProcessResponse)
+def process_articles_pipeline_endpoint(
+    payload: PipelineProcessRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Запускает локальный batch pipeline для выбранных статей."""
+
+    try:
+        return process_articles_pipeline(db, payload.model_dump())
+    except PipelineError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/pipeline/status", response_model=PipelineRunResponse)
+def pipeline_status_endpoint(db: Session = Depends(get_db)) -> dict[str, object]:
+    """Возвращает последний запуск batch pipeline."""
+
+    run = latest_pipeline_run(db)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Pipeline еще не запускался")
+    return pipeline_run_to_dict(run)
 
 
 @router.post("/narratives/discover", response_model=NarrativeDiscoveryResponse)

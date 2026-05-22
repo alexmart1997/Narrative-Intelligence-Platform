@@ -269,3 +269,45 @@ class EventDetailResponse(BaseModel):
     created_at: datetime
     articles: list[EventArticleItem]
     entities: list[EventEntityItem]
+
+
+class PipelineProcessRequest(BaseModel):
+    source_code: Optional[str] = None
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+    language: Optional[str] = None
+    only_without_analysis: bool = True
+    limit: int = Field(default=100, ge=1, le=500)
+    steps: list[str] = Field(default_factory=lambda: ["analyze", "embed", "detect_event"])
+
+
+class PipelineStepStats(BaseModel):
+    success: int = 0
+    failed: int = 0
+    skipped: int = 0
+
+
+class PipelineErrorItem(BaseModel):
+    article_id: int
+    step: str
+    error: str
+
+
+class PipelineProcessResponse(BaseModel):
+    selected_articles: int
+    processed: int
+    failed: int
+    steps: dict[str, PipelineStepStats]
+    errors: list[PipelineErrorItem]
+
+
+class PipelineRunResponse(BaseModel):
+    id: int
+    started_at: datetime
+    finished_at: Optional[datetime]
+    status: str
+    selected_articles: int
+    processed: int
+    failed: int
+    params: dict
+    result: Optional[PipelineProcessResponse]

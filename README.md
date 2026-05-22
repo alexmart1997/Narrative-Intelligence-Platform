@@ -232,6 +232,65 @@ curl http://localhost:8000/articles/1/evidence
 
 Backend отправляет текст статьи в локальный Ollama, ожидает структурированный JSON, сохраняет резюме, тональность, stance, framing, гипотезу нарратива, сущности, отношения и evidence-цитаты. Evidence хранит короткие фрагменты текста, которые объясняют выводы по framing, sympathy, criticism, narrative и другим типам. Если модель вернет текст вокруг JSON, backend попробует извлечь JSON автоматически. Если JSON невалидный, API вернет понятную ошибку. Если отдельные evidence-элементы невалидны или цитата не найдена в тексте статьи, backend просто пропустит их.
 
+## Batch pipeline
+
+Для массовой локальной обработки статей есть простой batch pipeline без Celery и очередей. Он последовательно проходит по выбранным статьям и не останавливает весь запуск, если отдельная статья упала.
+
+Загрузить статьи можно через ingestion endpoint:
+
+```bash
+curl -X POST http://localhost:8000/ingest/source-period \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_code": "rbc",
+    "date_from": "2026-05-01",
+    "date_to": "2026-05-30",
+    "limit": 100
+  }'
+```
+
+Массово проанализировать, векторизовать и привязать события:
+
+```bash
+curl -X POST http://localhost:8000/pipeline/process-articles \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_code": null,
+    "date_from": null,
+    "date_to": null,
+    "language": null,
+    "only_without_analysis": true,
+    "limit": 100,
+    "steps": ["analyze", "embed", "detect_event"]
+  }'
+```
+
+Для быстрой проверки без LLM можно запустить только embedding на одной уже проанализированной статье:
+
+```bash
+curl -X POST http://localhost:8000/pipeline/process-articles \
+  -H "Content-Type: application/json" \
+  -d '{
+    "only_without_analysis": false,
+    "limit": 1,
+    "steps": ["embed"]
+  }'
+```
+
+Проверить последний запуск pipeline:
+
+```bash
+curl http://localhost:8000/pipeline/status
+```
+
+Проверить результаты:
+
+```bash
+curl "http://localhost:8000/articles?limit=20"
+curl "http://localhost:8000/events"
+curl "http://localhost:8000/articles/1/analysis"
+```
+
 ## Векторизация и похожие статьи
 
 Для embeddings используется легкая мультиязычная модель `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`. Она подходит для MacBook и работает с русскими и английскими текстами.
