@@ -206,26 +206,25 @@ export default function ArticleGraphPage() {
       </header>
 
       <section className={styles.shell}>
-        <aside className={styles.legend}>
-          <h2>Легенда</h2>
-          <ul>
+        <section className={styles.canvasWrap}>
+          <div className={styles.legend}>
             {nodeTypes.map((item) => (
-              <li key={item.type}>
-                <span className={`${styles.legendDot} ${styles[item.type]}`} />
+              <span key={item.type}>
+                <i className={`${styles.legendDot} ${styles[item.type]}`} />
                 {item.label}
-              </li>
-            ))}
-          </ul>
-
-          <div className={styles.edgeLegend}>
-            <h3>Типы связей</h3>
-            {Object.entries(edgeLabels).map(([key, value]) => (
-              <span key={key}>{value}</span>
+              </span>
             ))}
           </div>
-        </aside>
-
-        <section className={styles.canvasWrap}>
+          <div className={styles.edgeLegend}>
+            <span>то же событие</span>
+            <span>похожая статья</span>
+            <span>общий нарратив</span>
+          </div>
+          {graph && relatedCount === 0 ? (
+            <div className={styles.insight}>
+              Связанные статьи не показаны: похожесть ниже порога 0.55 или для соседних статей еще нет анализа.
+            </div>
+          ) : null}
           {loading ? <div className={styles.state}>Загружаю граф...</div> : null}
           {processing ? <div className={styles.state}>Выполняю анализ, embedding и event matching...</div> : null}
           {error ? (

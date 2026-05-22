@@ -252,12 +252,13 @@ def embed_all_articles_endpoint(db: Session = Depends(get_db)) -> dict[str, int]
 def similar_articles_endpoint(
     article_id: int,
     limit: int = Query(default=10, ge=1, le=50),
+    min_score: float = Query(default=0.55, ge=0.0, le=1.0),
     db: Session = Depends(get_db),
 ) -> SimilarArticlesResponse:
     """Ищет похожие статьи в Qdrant."""
 
     try:
-        items = find_similar_articles(db, article_id=article_id, limit=limit)
+        items = find_similar_articles(db, article_id=article_id, limit=limit, min_score=min_score)
     except VectorError as exc:
         raise _vector_http_error(exc) from exc
     return SimilarArticlesResponse(article_id=article_id, items=items)

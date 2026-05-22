@@ -9,6 +9,9 @@ from sqlalchemy.orm import Session
 from app.models import Article, ArticleAnalysis
 
 
+GRAPH_SIMILARITY_SCORE_THRESHOLD = 0.55
+
+
 class GraphError(Exception):
     """Ошибка построения графа статьи."""
 
@@ -233,9 +236,14 @@ def _add_related_article_node(add_node: Any, article: Article, relation_hint: st
 
 def _similar_articles(db: Session, article_id: int, limit: int) -> list[dict[str, Any]]:
     try:
-        from app.vector import VectorError, find_similar_articles
+        from app.vector import find_similar_articles
 
-        return find_similar_articles(db, article_id=article_id, limit=limit)
+        return find_similar_articles(
+            db,
+            article_id=article_id,
+            limit=limit,
+            min_score=GRAPH_SIMILARITY_SCORE_THRESHOLD,
+        )
     except Exception:
         return []
 

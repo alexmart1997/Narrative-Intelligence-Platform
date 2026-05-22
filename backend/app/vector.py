@@ -14,6 +14,9 @@ class VectorError(Exception):
     """Ошибка векторизации или обращения к Qdrant."""
 
 
+DEFAULT_SIMILARITY_SCORE_THRESHOLD = 0.55
+
+
 @lru_cache(maxsize=1)
 def get_embedding_model() -> Any:
     """Лениво загружает локальную sentence-transformers модель."""
@@ -86,7 +89,12 @@ def embed_all_articles(db: Session) -> dict[str, int]:
     return {"total": len(articles), "embedded": embedded, "errors": errors}
 
 
-def find_similar_articles(db: Session, article_id: int, limit: int) -> list[dict[str, Any]]:
+def find_similar_articles(
+    db: Session,
+    article_id: int,
+    limit: int,
+    min_score: float = DEFAULT_SIMILARITY_SCORE_THRESHOLD,
+) -> list[dict[str, Any]]:
     """Ищет похожие статьи в Qdrant для сравнения освещения одного события."""
 
     article = db.get(Article, article_id)
@@ -115,7 +123,7 @@ def find_similar_articles(db: Session, article_id: int, limit: int) -> list[dict
     except Exception as exc:
         raise VectorError(f"Не удалось выполнить поиск в Qdrant: {exc}") from exc
 
-    return [
+    items = [
         {
             "score": result.score,
             "article_id": result.payload.get("article_id") if result.payload else None,
@@ -126,6 +134,9 @@ def find_similar_articles(db: Session, article_id: int, limit: int) -> list[dict
         }
         for result in results
     ]
+    # Qdrant всегда возвращает ближайшие точки, даже если реальной смысловой
+    # близости почти нет. Для аналитического UI низкие score лучше скрывать.
+    return [item for item in items if float(item["score"]) >= min_score]
 
 
 def build_embedding(article: Article, analysis: ArticleAnalysis) -> list[float]:

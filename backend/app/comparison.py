@@ -15,6 +15,9 @@ class ComparisonError(Exception):
     """Ошибка сравнения двух статей."""
 
 
+COMPARISON_SIMILARITY_SCORE_THRESHOLD = 0.55
+
+
 def compare_articles(db: Session, article_id_1: int, article_id_2: int) -> dict[str, Any]:
     """Сравнивает две статьи и возвращает структурированный JSON."""
 
@@ -36,7 +39,13 @@ def compare_with_similar(db: Session, article_id: int) -> list[dict[str, Any]]:
     """Сравнивает статью с top-3 похожими материалами из Qdrant."""
 
     try:
-        similar_items = find_similar_articles(db, article_id=article_id, limit=3)
+        # Берем чуть больше кандидатов, но сравниваем только смыслово близкие.
+        similar_items = find_similar_articles(
+            db,
+            article_id=article_id,
+            limit=10,
+            min_score=COMPARISON_SIMILARITY_SCORE_THRESHOLD,
+        )[:3]
     except VectorError as exc:
         raise ComparisonError(str(exc)) from exc
 
