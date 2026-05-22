@@ -134,6 +134,7 @@
 
 .legend,
 .edgeLegend,
+.sceneMeta,
 .insight,
 .state,
 .error {
@@ -228,6 +229,26 @@
 
 .edgeLegend span:nth-child(3) {
   color: #fda4af;
+}
+
+.sceneMeta {
+  top: 18px;
+  right: 18px;
+  display: grid;
+  gap: 4px;
+  max-width: 340px;
+  padding: 12px 14px;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.sceneMeta strong {
+  color: #f8fafc;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .insight {

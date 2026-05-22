@@ -1,15 +1,10 @@
 "use client";
 
-import cytoscape, {
-  Core,
-  ElementDefinition,
-  EventObject,
-  NodeSingular,
-  StylesheetJson
-} from "cytoscape";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import {
   ArticleGraphResponse,
   GraphEdge,
@@ -20,6 +15,18 @@ import {
   getArticleGraph
 } from "@/lib/api";
 import styles from "./page.module.css";
+
+type SceneNode = GraphNode & {
+  position: THREE.Vector3;
+  size: number;
+  color: string;
+};
+
+type NodeMesh = THREE.Mesh & {
+  userData: {
+    graphNode: SceneNode;
+  };
+};
 
 const nodeTypes = [
   { type: "article", label: "Статья" },
@@ -44,13 +51,36 @@ const edgeLabels: Record<string, string> = {
   shares_narrative: "общий нарратив"
 };
 
+const nodePalette: Record<string, string> = {
+  article: "#38bdf8",
+  source: "#a7f3d0",
+  person: "#fbbf24",
+  organization: "#c084fc",
+  country: "#22d3ee",
+  location: "#2dd4bf",
+  concept: "#e0f2fe",
+  narrative: "#fb7185"
+};
+
+const edgePalette: Record<string, string> = {
+  same_event_as: "#86efac",
+  similar_to: "#38bdf8",
+  shares_narrative: "#fb7185",
+  sympathizes_with: "#86efac",
+  criticizes: "#fb7185",
+  supports_narrative: "#fda4af",
+  published_by: "#a7f3d0",
+  mentions: "#7dd3fc",
+  relates_to: "#cbd5e1"
+};
+
 export default function ArticleGraphPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const initialArticleId = Number(params.id);
   const [activeArticleId, setActiveArticleId] = useState(initialArticleId);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const cyRef = useRef<Core | null>(null);
+  const sceneApiRef = useRef<{ dispose: () => void; rerun: () => void } | null>(null);
   const [graph, setGraph] = useState<ArticleGraphResponse | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
@@ -78,68 +108,39 @@ export default function ArticleGraphPage() {
   }, [activeArticleId]);
 
   useEffect(() => {
-    if (!graph || !containerRef.current) {
-      return;
-    }
+    if (!graph || !containerRef.current) return;
 
-    cyRef.current?.destroy();
-    const cy = cytoscape({
+    sceneApiRef.current?.dispose();
+    sceneApiRef.current = createThreeGraphScene({
+      activeArticleId,
       container: containerRef.current,
-      elements: toElements(graph, activeArticleId),
-      style: graphStyles(),
-      layout: {
-        name: "cose",
-        animate: true,
-        animationDuration: 700,
-        fit: true,
-        padding: 72,
-        nodeRepulsion: 120000,
-        idealEdgeLength: 150,
-        edgeElasticity: 90,
-        gravity: 0.08,
-        numIter: 900
-      },
-      minZoom: 0.18,
-      maxZoom: 3,
-      wheelSensitivity: 0.16
-    });
-
-    cy.on("tap", "node", (event: EventObject) => {
-      const node = event.target as NodeSingular;
-      const graphNode = graph.nodes.find((item) => item.id === node.id());
-      setSelectedNode(graphNode ?? null);
-      setSelectedEdge(null);
-
-      // Клик по связанной статье переносит пользователя в ее собственный граф.
-      const nodeArticleId = Number(graphNode?.data?.article_id);
-      if (graphNode?.type === "article" && Number.isFinite(nodeArticleId) && nodeArticleId !== activeArticleId) {
-        setActiveArticleId(nodeArticleId);
-        router.replace(`/articles/${nodeArticleId}/graph`);
-      }
-    });
-
-    cy.on("tap", "edge", (event: EventObject) => {
-      const edgeId = event.target.id();
-      setSelectedEdge(graph.edges.find((item) => item.id === edgeId) ?? null);
-      setSelectedNode(null);
-    });
-
-    cy.on("tap", (event: EventObject) => {
-      if (event.target === cy) {
+      graph,
+      onEdgeSelect: (edge) => {
+        setSelectedEdge(edge);
         setSelectedNode(null);
+      },
+      onNodeSelect: (node) => {
+        setSelectedNode(node);
         setSelectedEdge(null);
+        const nodeArticleId = Number(node.data.article_id);
+        if (node.type === "article" && Number.isFinite(nodeArticleId) && nodeArticleId !== activeArticleId) {
+          setActiveArticleId(nodeArticleId);
+          router.replace(`/articles/${nodeArticleId}/graph`);
+        }
       }
     });
 
-    cyRef.current = cy;
-    return () => cy.destroy();
+    return () => {
+      sceneApiRef.current?.dispose();
+      sceneApiRef.current = null;
+    };
   }, [activeArticleId, graph, router]);
 
   async function loadGraph(articleId: number) {
     setLoading(true);
     setError(null);
     try {
-      const data = await getArticleGraph(articleId, { includeRelated: true, limitRelated: 20 });
+      const data = await getArticleGraph(articleId, { includeRelated: true, limitRelated: 30 });
       setGraph(data);
       setSelectedEdge(null);
       setSelectedNode(data.nodes.find((node) => node.id === `article_${articleId}`) ?? null);
@@ -168,20 +169,6 @@ export default function ArticleGraphPage() {
     }
   }
 
-  function rerunLayout() {
-    cyRef.current?.layout({
-      name: "cose",
-      animate: true,
-      animationDuration: 600,
-      fit: true,
-      padding: 72,
-      nodeRepulsion: 120000,
-      idealEdgeLength: 150,
-      gravity: 0.08,
-      numIter: 700
-    }).run();
-  }
-
   return (
     <main className={styles.page}>
       <header className={styles.header}>
@@ -189,15 +176,15 @@ export default function ArticleGraphPage() {
           <Link className={styles.backLink} href="/articles">
             Назад к статьям
           </Link>
-          <p className={styles.eyebrow}>Интерактивная карта связей</p>
+          <p className={styles.eyebrow}>3D intelligence graph</p>
           <h1>{title}</h1>
         </div>
         <div className={styles.headerActions}>
           <span className={styles.stats}>
-            {graph ? `${graph.nodes.length} узлов · ${graph.edges.length} связей · ${relatedCount} связанных статей` : "Граф"}
+            {graph ? `${graph.nodes.length} узлов · ${graph.edges.length} связей · ${relatedCount} связанных статей` : "3D граф"}
           </span>
-          <button onClick={rerunLayout} disabled={!graph || loading}>
-            Перестроить
+          <button onClick={() => sceneApiRef.current?.rerun()} disabled={!graph || loading}>
+            Сфокусировать
           </button>
           <button onClick={() => loadGraph(activeArticleId)} disabled={loading || processing}>
             Обновить
@@ -215,17 +202,17 @@ export default function ArticleGraphPage() {
               </span>
             ))}
           </div>
-          <div className={styles.edgeLegend}>
-            <span>то же событие</span>
-            <span>похожая статья</span>
-            <span>общий нарратив</span>
+          <div className={styles.sceneMeta}>
+            <strong>Density map</strong>
+            <span>Размер точки = сила события / нарратива</span>
+            <span>Drag = orbit · Wheel = zoom · Click = inspect</span>
           </div>
           {graph && relatedCount === 0 ? (
             <div className={styles.insight}>
               Связанные статьи не показаны: похожесть ниже порога 0.55 или для соседних статей еще нет анализа.
             </div>
           ) : null}
-          {loading ? <div className={styles.state}>Загружаю граф...</div> : null}
+          {loading ? <div className={styles.state}>Загружаю 3D-граф...</div> : null}
           {processing ? <div className={styles.state}>Выполняю анализ, embedding и event matching...</div> : null}
           {error ? (
             <div className={styles.error}>
@@ -237,7 +224,7 @@ export default function ArticleGraphPage() {
               ) : null}
             </div>
           ) : null}
-          <div ref={containerRef} className={styles.canvas} aria-label="Интерактивный граф статьи" />
+          <div ref={containerRef} className={styles.canvas} aria-label="3D граф статьи" />
         </section>
 
         <aside className={styles.detailPanel}>
@@ -246,14 +233,308 @@ export default function ArticleGraphPage() {
           {selectedEdge ? <EdgeDetails edge={selectedEdge} /> : null}
           {!selectedNode && !selectedEdge ? (
             <p className={styles.hint}>
-              Кликни по узлу или связи. Узлы можно перетаскивать, колесом менять масштаб,
-              а клик по связанной статье откроет ее собственную сеть.
+              Кликни по точке или связи. Сцена вращается как 3D-карта: drag для орбиты,
+              колесо для масштаба. Клик по связанной статье перестраивает граф вокруг нее.
             </p>
           ) : null}
         </aside>
       </section>
     </main>
   );
+}
+
+function createThreeGraphScene({
+  activeArticleId,
+  container,
+  graph,
+  onEdgeSelect,
+  onNodeSelect
+}: {
+  activeArticleId: number;
+  container: HTMLDivElement;
+  graph: ArticleGraphResponse;
+  onEdgeSelect: (edge: GraphEdge) => void;
+  onNodeSelect: (node: GraphNode) => void;
+}) {
+  const sceneNodes = buildSceneNodes(graph, activeArticleId);
+  const nodeById = new Map(sceneNodes.map((node) => [node.id, node]));
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2("#030405", 0.0019);
+
+  const width = Math.max(container.clientWidth, 640);
+  const height = Math.max(container.clientHeight, 480);
+  const camera = new THREE.PerspectiveCamera(48, width / height, 1, 5000);
+  camera.position.set(0, 260, 720);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(width, height);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  container.replaceChildren(renderer.domElement);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.rotateSpeed = 0.45;
+  controls.zoomSpeed = 0.75;
+  controls.panSpeed = 0.5;
+  controls.minDistance = 180;
+  controls.maxDistance = 1400;
+  controls.target.set(0, 0, 0);
+
+  scene.add(new THREE.AmbientLight("#7dd3fc", 0.7));
+  const keyLight = new THREE.PointLight("#38bdf8", 3.4, 1200);
+  keyLight.position.set(-220, 260, 300);
+  scene.add(keyLight);
+  const warmLight = new THREE.PointLight("#fb923c", 2.4, 900);
+  warmLight.position.set(260, -180, 260);
+  scene.add(warmLight);
+
+  const nodeMeshes: NodeMesh[] = [];
+  const labelSprites: THREE.Sprite[] = [];
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  const edgeObjects: Array<{ edge: GraphEdge; line: THREE.Line }> = [];
+
+  addStarField(scene);
+  addDepthRings(scene);
+
+  for (const edge of graph.edges) {
+    const source = nodeById.get(edge.source);
+    const target = nodeById.get(edge.target);
+    if (!source || !target) continue;
+    const line = createEdgeLine(source, target, edge);
+    scene.add(line);
+    edgeObjects.push({ edge, line });
+  }
+
+  for (const node of sceneNodes) {
+    const mesh = createNodeMesh(node, node.id === `article_${activeArticleId}`) as unknown as NodeMesh;
+    mesh.userData.graphNode = node;
+    scene.add(mesh);
+    nodeMeshes.push(mesh);
+
+    if (node.type === "article" || node.type === "source" || node.type === "narrative") {
+      const label = createTextSprite(shortLabel(node.label), node.color);
+      label.position.copy(node.position).add(new THREE.Vector3(0, node.size + 18, 0));
+      scene.add(label);
+      labelSprites.push(label);
+    }
+  }
+
+  function render() {
+    controls.update();
+    for (const sprite of labelSprites) {
+      sprite.quaternion.copy(camera.quaternion);
+    }
+    renderer.render(scene, camera);
+    animationId = requestAnimationFrame(render);
+  }
+
+  function resize() {
+    const nextWidth = Math.max(container.clientWidth, 640);
+    const nextHeight = Math.max(container.clientHeight, 480);
+    camera.aspect = nextWidth / nextHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(nextWidth, nextHeight);
+  }
+
+  function click(event: MouseEvent) {
+    const rect = renderer.domElement.getBoundingClientRect();
+    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+
+    const nodeHit = raycaster.intersectObjects(nodeMeshes, false)[0];
+    if (nodeHit) {
+      onNodeSelect((nodeHit.object as NodeMesh).userData.graphNode);
+      return;
+    }
+
+    raycaster.params.Line = { threshold: 9 };
+    const lineHit = raycaster.intersectObjects(edgeObjects.map((item) => item.line), false)[0];
+    if (lineHit) {
+      const edgeItem = edgeObjects.find((item) => item.line === lineHit.object);
+      if (edgeItem) onEdgeSelect(edgeItem.edge);
+    }
+  }
+
+  let animationId = requestAnimationFrame(render);
+  window.addEventListener("resize", resize);
+  renderer.domElement.addEventListener("click", click);
+
+  function focus() {
+    camera.position.set(0, 260, 720);
+    controls.target.set(0, 0, 0);
+    controls.update();
+  }
+
+  return {
+    dispose() {
+      cancelAnimationFrame(animationId);
+      window.removeEventListener("resize", resize);
+      renderer.domElement.removeEventListener("click", click);
+      controls.dispose();
+      scene.traverse((object) => {
+        if (object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.Points) {
+          object.geometry?.dispose();
+          const material = object.material;
+          if (Array.isArray(material)) {
+            material.forEach((item) => item.dispose());
+          } else {
+            material?.dispose();
+          }
+        }
+      });
+      renderer.dispose();
+      container.replaceChildren();
+    },
+    rerun: focus
+  };
+}
+
+function buildSceneNodes(graph: ArticleGraphResponse, activeArticleId: number): SceneNode[] {
+  const activeId = `article_${activeArticleId}`;
+  const relatedArticles = graph.nodes.filter((node) => node.type === "article" && node.id !== activeId);
+  const entities = graph.nodes.filter((node) => !["article", "source", "narrative"].includes(node.type));
+  const source = graph.nodes.find((node) => node.type === "source");
+  const narrative = graph.nodes.find((node) => node.type === "narrative");
+  const active = graph.nodes.find((node) => node.id === activeId);
+  const result: SceneNode[] = [];
+
+  if (active) result.push(toSceneNode(active, new THREE.Vector3(0, 0, 0), true));
+  if (source) result.push(toSceneNode(source, new THREE.Vector3(-230, 75, -90), false));
+  if (narrative) result.push(toSceneNode(narrative, new THREE.Vector3(250, -80, -120), false));
+
+  entities.forEach((node, index) => {
+    const angle = (index / Math.max(entities.length, 1)) * Math.PI * 2;
+    const radius = 190 + (index % 3) * 44;
+    const y = Math.sin(index * 1.73) * 76;
+    result.push(toSceneNode(node, new THREE.Vector3(Math.cos(angle) * radius, y, Math.sin(angle) * radius), false));
+  });
+
+  relatedArticles.forEach((node, index) => {
+    const angle = Math.PI * 0.1 + (index / Math.max(relatedArticles.length - 1, 1)) * Math.PI * 0.82;
+    const radius = 340 + (index % 2) * 48;
+    const y = -60 + Math.sin(index * 0.9) * 110;
+    result.push(toSceneNode(node, new THREE.Vector3(Math.cos(angle) * radius, y, -180 + Math.sin(angle) * radius), false));
+  });
+
+  return result;
+}
+
+function toSceneNode(node: GraphNode, position: THREE.Vector3, focused: boolean): SceneNode {
+  const density = Number(node.data.density_score ?? 1);
+  const baseSize = node.type === "article" ? 12 + density * 3.2 : node.type === "narrative" ? 25 : 16;
+  return {
+    ...node,
+    color: focused ? "#f97316" : nodePalette[node.type] ?? "#67e8f9",
+    position,
+    size: focused ? Math.max(40, baseSize * 1.25) : baseSize
+  };
+}
+
+function createNodeMesh(node: SceneNode, focused: boolean) {
+  const geometry = new THREE.SphereGeometry(node.size, 32, 24);
+  const material = new THREE.MeshStandardMaterial({
+    color: node.color,
+    emissive: node.color,
+    emissiveIntensity: focused ? 1.8 : node.type === "article" ? 1.2 : 0.75,
+    metalness: 0.15,
+    roughness: 0.22
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.copy(node.position);
+
+  const glowGeometry = new THREE.SphereGeometry(node.size * (focused ? 2.35 : 1.9), 32, 24);
+  const glowMaterial = new THREE.MeshBasicMaterial({
+    color: node.color,
+    transparent: true,
+    opacity: focused ? 0.18 : 0.09,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+  mesh.add(glow);
+  return mesh;
+}
+
+function createEdgeLine(source: SceneNode, target: SceneNode, edge: GraphEdge) {
+  const midpoint = source.position.clone().add(target.position).multiplyScalar(0.5);
+  midpoint.y += 48 + source.position.distanceTo(target.position) * 0.08;
+  const curve = new THREE.QuadraticBezierCurve3(source.position, midpoint, target.position);
+  const points = curve.getPoints(36);
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  const color = edgePalette[edge.label] ?? "#7dd3fc";
+  const material = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: ["same_event_as", "shares_narrative"].includes(edge.label) ? 0.74 : 0.34,
+    blending: THREE.AdditiveBlending
+  });
+  return new THREE.Line(geometry, material);
+}
+
+function addStarField(scene: THREE.Scene) {
+  const count = 900;
+  const positions = new Float32Array(count * 3);
+  for (let index = 0; index < count; index += 1) {
+    positions[index * 3] = (Math.random() - 0.5) * 1600;
+    positions[index * 3 + 1] = (Math.random() - 0.5) * 900;
+    positions[index * 3 + 2] = (Math.random() - 0.5) * 1600;
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  const material = new THREE.PointsMaterial({
+    color: "#38bdf8",
+    opacity: 0.32,
+    size: 1.5,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false
+  });
+  scene.add(new THREE.Points(geometry, material));
+}
+
+function addDepthRings(scene: THREE.Scene) {
+  for (const radius of [190, 330, 470]) {
+    const curve = new THREE.EllipseCurve(0, 0, radius, radius * 0.52);
+    const points = curve.getPoints(160).map((point) => new THREE.Vector3(point.x, -140, point.y));
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineBasicMaterial({
+      color: "#155e75",
+      opacity: 0.18,
+      transparent: true,
+      blending: THREE.AdditiveBlending
+    });
+    scene.add(new THREE.LineLoop(geometry, material));
+  }
+}
+
+function createTextSprite(text: string, color: string) {
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  canvas.width = 512;
+  canvas.height = 128;
+  if (context) {
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.font = "700 28px Arial";
+    context.fillStyle = "rgba(2, 6, 23, 0.62)";
+    context.fillRect(0, 28, canvas.width, 58);
+    context.fillStyle = color;
+    context.shadowColor = color;
+    context.shadowBlur = 16;
+    context.fillText(text, 18, 66, 476);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
+  const sprite = new THREE.Sprite(material);
+  sprite.scale.set(150, 38, 1);
+  return sprite;
+}
+
+function shortLabel(value: string) {
+  return value.length > 52 ? `${value.slice(0, 49)}...` : value;
 }
 
 function NodeDetails({ currentArticleId, node }: { currentArticleId: number; node: GraphNode }) {
@@ -263,7 +544,7 @@ function NodeDetails({ currentArticleId, node }: { currentArticleId: number; nod
       <span className={`${styles.badge} ${styles[node.type]}`}>{translateNodeType(node.type)}</span>
       <h3>{node.label}</h3>
       {node.type === "article" && Number.isFinite(articleId) && articleId !== currentArticleId ? (
-        <p className={styles.hint}>Клик по этой статье перестроит граф вокруг нее.</p>
+        <p className={styles.hint}>Клик по этой статье перестроит 3D-сцену вокруг нее.</p>
       ) : null}
       <dl>
         <dt>ID</dt>
@@ -302,228 +583,6 @@ function DisplayValue({ label, value }: { label: string; value: unknown }) {
       <dd>{typeof value === "number" ? formatNumber(value) : String(value)}</dd>
     </>
   );
-}
-
-function toElements(graph: ArticleGraphResponse, activeArticleId: number): ElementDefinition[] {
-  return [
-    ...graph.nodes.map((node) => ({
-      data: {
-        id: node.id,
-        label: node.label,
-        type: node.type,
-        densityScore: Number(node.data.density_score ?? 1),
-        focus: node.id === `article_${activeArticleId}` ? "true" : "false",
-        relationHint: typeof node.data.relation_hint === "string" ? node.data.relation_hint : ""
-      }
-    })),
-    ...graph.edges.map((edge) => ({
-      data: {
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-        label: edge.data?.relation_type ? String(edge.data.relation_type) : translateEdge(edge.label),
-        edgeType: edge.label
-      }
-    }))
-  ];
-}
-
-function graphStyles(): StylesheetJson {
-  return [
-    {
-      selector: "node",
-      style: {
-        "background-color": "#66e8ff",
-        "border-color": "rgba(221, 252, 255, 0.9)",
-        "border-width": 1,
-        "box-shadow": "0 0 18px #38bdf8",
-        color: "#94f3ff",
-        "font-size": 8,
-        "font-weight": 700,
-        label: "data(label)",
-        "min-zoomed-font-size": 7,
-        opacity: 0.94,
-        "overlay-color": "#67e8f9",
-        "overlay-padding": 10,
-        "overlay-opacity": 0,
-        "text-background-opacity": 0,
-        "text-max-width": 130,
-        "text-opacity": 0.82,
-        "text-wrap": "wrap",
-        "text-valign": "bottom",
-        "text-margin-y": 5,
-        height: 18,
-        shape: "ellipse",
-        width: 18
-      }
-    },
-    {
-      selector: 'node[type = "article"]',
-      style: {
-        "background-color": "#38bdf8",
-        "border-color": "#dffbff",
-        "border-width": 2,
-        color: "#67e8f9",
-        "font-size": 9,
-        height: "mapData(densityScore, 1, 10, 20, 88)",
-        shape: "ellipse",
-        width: "mapData(densityScore, 1, 10, 20, 88)"
-      }
-    },
-    {
-      selector: 'node[focus = "true"]',
-      style: {
-        "background-color": "#f97316",
-        "border-color": "#fed7aa",
-        "border-width": 4,
-        color: "#ffedd5",
-        "font-size": 11,
-        height: 96,
-        width: 96
-      }
-    },
-    {
-      selector: 'node[type = "source"]',
-      style: {
-        "background-color": "#a7f3d0",
-        "border-color": "#ecfdf5",
-        shape: "diamond"
-      }
-    },
-    {
-      selector: 'node[type = "person"]',
-      style: { "background-color": "#fbbf24", color: "#fef3c7" }
-    },
-    {
-      selector: 'node[type = "organization"]',
-      style: {
-        "background-color": "#c084fc",
-        shape: "ellipse"
-      }
-    },
-    {
-      selector: 'node[type = "country"]',
-      style: {
-        "background-color": "#22d3ee",
-        shape: "hexagon"
-      }
-    },
-    {
-      selector: 'node[type = "location"]',
-      style: {
-        "background-color": "#2dd4bf",
-        shape: "tag"
-      }
-    },
-    {
-      selector: 'node[type = "concept"]',
-      style: {
-        "background-color": "#e0f2fe",
-        shape: "ellipse"
-      }
-    },
-    {
-      selector: 'node[type = "narrative"]',
-      style: {
-        "background-color": "#fb7185",
-        "border-color": "#ffe4e6",
-        color: "#ffe4e6",
-        height: 46,
-        shape: "ellipse",
-        width: 46
-      }
-    },
-    {
-      selector: 'node[relationHint = "same_event"]',
-      style: {
-        "border-color": "#86efac",
-        "border-width": 3
-      }
-    },
-    {
-      selector: 'node[relationHint = "qdrant_similarity"]',
-      style: {
-        "border-color": "#7dd3fc",
-        "border-width": 3
-      }
-    },
-    {
-      selector: 'node[relationHint = "narrative_similarity"]',
-      style: {
-        "border-color": "#fda4af",
-        "border-width": 3
-      }
-    },
-    {
-      selector: "edge",
-      style: {
-        "curve-style": "bezier",
-        "font-size": 8,
-        "line-color": "rgba(125, 211, 252, 0.38)",
-        "target-arrow-color": "rgba(125, 211, 252, 0.38)",
-        "target-arrow-shape": "triangle",
-        color: "#bae6fd",
-        label: "data(label)",
-        "min-zoomed-font-size": 7,
-        opacity: 0.72,
-        "text-background-opacity": 0,
-        "text-opacity": 0.66,
-        width: 1
-      }
-    },
-    {
-      selector: 'edge[edgeType = "same_event_as"]',
-      style: {
-        "line-color": "#86efac",
-        "target-arrow-color": "#86efac",
-        opacity: 0.95,
-        width: 2.4
-      }
-    },
-    {
-      selector: 'edge[edgeType = "similar_to"]',
-      style: {
-        "line-color": "#38bdf8",
-        "target-arrow-color": "#38bdf8",
-        opacity: 0.82,
-        "line-style": "dashed"
-      }
-    },
-    {
-      selector: 'edge[edgeType = "shares_narrative"]',
-      style: {
-        "line-color": "#fb7185",
-        "target-arrow-color": "#fb7185",
-        opacity: 0.82,
-        "line-style": "dotted"
-      }
-    },
-    {
-      selector: 'edge[edgeType = "sympathizes_with"]',
-      style: {
-        "line-color": "#86efac",
-        "target-arrow-color": "#86efac"
-      }
-    },
-    {
-      selector: 'edge[edgeType = "criticizes"]',
-      style: {
-        "line-color": "#fb7185",
-        "target-arrow-color": "#fb7185"
-      }
-    },
-    {
-      selector: "node:selected, edge:selected",
-      style: {
-        "border-color": "#ffffff",
-        "line-color": "#ffffff",
-        "target-arrow-color": "#ffffff",
-        "border-width": 5,
-        width: 3,
-        opacity: 1
-      }
-    }
-  ] as StylesheetJson;
 }
 
 function translateNodeType(type: string) {
