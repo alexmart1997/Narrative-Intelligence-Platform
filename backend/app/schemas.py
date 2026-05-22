@@ -81,6 +81,18 @@ class AnalysisRelationItem(BaseModel):
     confidence: float
 
 
+class AnalysisEvidenceItem(BaseModel):
+    id: int
+    article_id: int
+    analysis_id: Optional[int]
+    evidence_type: str
+    target: str
+    quote: str
+    explanation: str
+    confidence: float
+    created_at: datetime
+
+
 class ArticleAnalysisResponse(BaseModel):
     id: int
     article_id: int
@@ -95,6 +107,7 @@ class ArticleAnalysisResponse(BaseModel):
     confidence: float
     entities: list[AnalysisEntityItem]
     relations: list[AnalysisRelationItem]
+    evidence: dict[str, list[AnalysisEvidenceItem]]
 
 
 class ArticleEmbedResponse(BaseModel):

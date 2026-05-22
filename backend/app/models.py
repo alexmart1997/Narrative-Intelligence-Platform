@@ -93,6 +93,7 @@ class Article(Base):
     analysis: Mapped[Optional["ArticleAnalysis"]] = relationship(back_populates="article")
     narrative_evidence: Mapped[list["NarrativeEvidence"]] = relationship(back_populates="article")
     events: Mapped[list["ArticleEvent"]] = relationship(back_populates="article")
+    analysis_evidence: Mapped[list["AnalysisEvidence"]] = relationship(back_populates="article")
 
 
 class Entity(Base):
@@ -246,6 +247,30 @@ class ArticleAnalysis(Base):
     )
 
     article: Mapped[Article] = relationship(back_populates="analysis")
+    evidence: Mapped[list["AnalysisEvidence"]] = relationship(back_populates="analysis")
+
+
+class AnalysisEvidence(Base):
+    """Цитата или фрагмент статьи, который объясняет вывод LLM-анализа."""
+
+    __tablename__ = "analysis_evidence"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), nullable=False)
+    analysis_id: Mapped[Optional[int]] = mapped_column(ForeignKey("article_analysis.id", ondelete="SET NULL"))
+    evidence_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    target: Mapped[str] = mapped_column(String(255), nullable=False)
+    quote: Mapped[str] = mapped_column(Text, nullable=False)
+    explanation: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    article: Mapped[Article] = relationship(back_populates="analysis_evidence")
+    analysis: Mapped[Optional[ArticleAnalysis]] = relationship(back_populates="evidence")
 
 
 class Narrative(Base):

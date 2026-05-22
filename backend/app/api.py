@@ -21,10 +21,11 @@ from app.graph import GraphError, build_article_graph
 from app.ingestion.service import ingest_source_period, query_articles, supported_sources
 from app.config import settings
 from app.llm import LlmError, call_llm
-from app.models import ArticleAnalysis, Event, Narrative
+from app.models import AnalysisEvidence, ArticleAnalysis, Event, Narrative
 from app.narratives import NarrativeDiscoveryError, build_narrative_graph, discover_narratives
 from app.schemas import (
     AnalysisEntityItem,
+    AnalysisEvidenceItem,
     AnalysisRelationItem,
     ArticleGraphResponse,
     ArticleEmbedResponse,
@@ -179,6 +180,22 @@ def get_article_analysis(
     if analysis is None:
         raise HTTPException(status_code=404, detail="Анализ статьи не найден")
     return _analysis_response(analysis)
+
+
+@router.get("/articles/{article_id}/evidence", response_model=dict[str, list[AnalysisEvidenceItem]])
+def get_article_evidence(
+    article_id: int,
+    db: Session = Depends(get_db),
+) -> dict[str, list[AnalysisEvidenceItem]]:
+    """Возвращает evidence статьи, сгруппированные по типу вывода."""
+
+    evidence_items = (
+        db.query(AnalysisEvidence)
+        .filter(AnalysisEvidence.article_id == article_id)
+        .order_by(AnalysisEvidence.evidence_type, AnalysisEvidence.created_at)
+        .all()
+    )
+    return _group_evidence(evidence_items)
 
 
 @router.post("/articles/{article_id}/embed", response_model=ArticleEmbedResponse)
@@ -431,7 +448,29 @@ def _analysis_response(analysis: ArticleAnalysis) -> ArticleAnalysisResponse:
         confidence=analysis.confidence,
         entities=entities,
         relations=relations,
+        evidence=_group_evidence(analysis.evidence),
     )
+
+
+def _group_evidence(evidence_items: list[AnalysisEvidence]) -> dict[str, list[AnalysisEvidenceItem]]:
+    """Группирует evidence по evidence_type для удобного отображения в UI."""
+
+    grouped: dict[str, list[AnalysisEvidenceItem]] = {}
+    for item in evidence_items:
+        grouped.setdefault(item.evidence_type, []).append(
+            AnalysisEvidenceItem(
+                id=item.id,
+                article_id=item.article_id,
+                analysis_id=item.analysis_id,
+                evidence_type=item.evidence_type,
+                target=item.target,
+                quote=item.quote,
+                explanation=item.explanation,
+                confidence=item.confidence,
+                created_at=item.created_at,
+            )
+        )
+    return grouped
 
 
 def _narrative_response(narrative: Narrative) -> NarrativeDetailResponse:

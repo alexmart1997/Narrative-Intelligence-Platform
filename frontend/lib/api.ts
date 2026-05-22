@@ -60,6 +60,52 @@ export type ArticleGraphResponse = {
   edges: GraphEdge[];
 };
 
+export type AnalysisEntityItem = {
+  id: number;
+  name: string;
+  type: string;
+  role: string | null;
+  importance_score: number | null;
+};
+
+export type AnalysisRelationItem = {
+  id: number;
+  source: string;
+  target: string;
+  relation_type: string;
+  description: string;
+  confidence: number;
+};
+
+export type AnalysisEvidenceItem = {
+  id: number;
+  article_id: number;
+  analysis_id: number | null;
+  evidence_type: string;
+  target: string;
+  quote: string;
+  explanation: string;
+  confidence: number;
+  created_at: string;
+};
+
+export type ArticleAnalysisResponse = {
+  id: number;
+  article_id: number;
+  short_summary: string;
+  detailed_summary: string;
+  sentiment: string;
+  stance: string;
+  framing: string;
+  sympathizes_with: string[];
+  criticizes: string[];
+  narrative_hypothesis: string;
+  confidence: number;
+  entities: AnalysisEntityItem[];
+  relations: AnalysisRelationItem[];
+  evidence: Record<string, AnalysisEvidenceItem[]>;
+};
+
 export type ArticleComparisonResult = {
   same_event_probability: number;
   fact_overlap: number;
@@ -151,6 +197,14 @@ export async function getArticles(filters: ArticleFilters): Promise<ArticleListR
 
 export async function analyzeArticle(articleId: number): Promise<void> {
   await request(`/articles/${articleId}/analyze`, { method: "POST" });
+}
+
+export async function getArticleAnalysis(articleId: number): Promise<ArticleAnalysisResponse> {
+  return request<ArticleAnalysisResponse>(`/articles/${articleId}/analysis`);
+}
+
+export async function getArticleEvidence(articleId: number): Promise<Record<string, AnalysisEvidenceItem[]>> {
+  return request<Record<string, AnalysisEvidenceItem[]>>(`/articles/${articleId}/evidence`);
 }
 
 export async function getArticleGraph(articleId: number): Promise<ArticleGraphResponse> {

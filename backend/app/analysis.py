@@ -12,6 +12,7 @@ from app.models import (
     Article,
     ArticleAnalysis,
     ArticleEntity,
+    AnalysisEvidence,
     Entity,
     EntityType,
     Relation,
@@ -93,13 +94,26 @@ def build_analysis_prompt(article: Article) -> str:
       "confidence": 0.0
     }}
   ],
-  "confidence": 0.0
+  "confidence": 0.0,
+  "evidence": [
+    {{
+      "evidence_type": "framing",
+      "target": "...",
+      "quote": "точная цитата или короткий фрагмент из статьи",
+      "explanation": "почему этот фрагмент подтверждает вывод",
+      "confidence": 0.0
+    }}
+  ]
 }}
 
 Правила:
 - sentiment выбери только из: positive, negative, neutral, mixed.
 - type выбери только из: person, organization, country, location, concept, other.
 - confidence и importance_score должны быть числами от 0 до 1.
+- evidence_type выбери только из: sentiment, stance, framing, sympathy, criticism, narrative, entity_role, relation.
+- quote должен быть коротким, до 300 символов, и дословно взят из текста статьи.
+- Для framing, sympathy, criticism и narrative обязательно добавь evidence, если в тексте есть явный фрагмент.
+- Если явного доказательства нет, не добавляй evidence.
 - Если данных мало, используй пустые массивы, unknown/other не выдумывай сверх текста.
 
 Источник: {article.source.name if article.source else "unknown"}
@@ -169,6 +183,7 @@ def save_analysis(db: Session, article: Article, data: dict[str, Any]) -> Articl
 
     db.execute(delete(Relation).where(Relation.article_id == article.id))
     db.execute(delete(ArticleEntity).where(ArticleEntity.article_id == article.id))
+    db.execute(delete(AnalysisEvidence).where(AnalysisEvidence.article_id == article.id))
     db.execute(delete(ArticleAnalysis).where(ArticleAnalysis.article_id == article.id))
 
     analysis = ArticleAnalysis(
@@ -217,9 +232,45 @@ def save_analysis(db: Session, article: Article, data: dict[str, Any]) -> Articl
             )
         )
 
+    for evidence_data in data.get("evidence", []):
+        evidence = _save_evidence(article, analysis, evidence_data)
+        if evidence is not None:
+            db.add(evidence)
+
     db.commit()
     db.refresh(analysis)
     return analysis
+
+
+def _save_evidence(article: Article, analysis: ArticleAnalysis, data: Any) -> AnalysisEvidence | None:
+    """Сохраняет только валидные evidence; невалидные элементы тихо пропускает."""
+
+    if not isinstance(data, dict):
+        return None
+
+    evidence_type = _string(data.get("evidence_type"), "").strip()
+    if evidence_type not in _allowed_evidence_types():
+        return None
+
+    target = _string(data.get("target"), "").strip()
+    quote = _string(data.get("quote"), "").strip()
+    explanation = _string(data.get("explanation"), "").strip()
+    if not target or not quote or not explanation:
+        return None
+    if len(quote) > 300:
+        return None
+    if quote not in article.text:
+        return None
+
+    return AnalysisEvidence(
+        article_id=article.id,
+        analysis_id=analysis.id,
+        evidence_type=evidence_type,
+        target=target[:255],
+        quote=quote,
+        explanation=explanation,
+        confidence=_score(data.get("confidence")),
+    )
 
 
 def _save_entity(db: Session, data: Any) -> Entity | None:
@@ -269,3 +320,16 @@ def _optional_score(value: Any) -> float | None:
     if value is None:
         return None
     return _score(value)
+
+
+def _allowed_evidence_types() -> set[str]:
+    return {
+        "sentiment",
+        "stance",
+        "framing",
+        "sympathy",
+        "criticism",
+        "narrative",
+        "entity_role",
+        "relation",
+    }

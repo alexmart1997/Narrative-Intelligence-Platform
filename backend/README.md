@@ -78,3 +78,14 @@ curl http://localhost:8000/graph/event/1
 ```bash
 curl "http://localhost:8000/graph/article/1?include_related=true&limit_related=10"
 ```
+
+## Explainability анализа
+
+После повторного анализа статьи backend сохраняет evidence-цитаты, если модель вернула валидные фрагменты из текста:
+
+```bash
+curl -X POST http://localhost:8000/articles/1/analyze
+curl http://localhost:8000/articles/1/evidence
+```
+
+`GET /articles/{id}/analysis` также возвращает analysis вместе с evidence, сгруппированными по `evidence_type`.
