@@ -10,7 +10,7 @@ from app.ingestion.base import NewsSourceAdapter, ParsedArticle
 from app.ingestion.bbc import BbcAdapter
 from app.ingestion.cnn import CnnAdapter
 from app.ingestion.rbc import RbcAdapter
-from app.models import Article, MaterialType, Source
+from app.models import Article, ArticleEntity, Entity, MaterialType, Source
 
 
 ADAPTERS: dict[str, type[NewsSourceAdapter]] = {
@@ -117,6 +117,8 @@ def query_articles(
     material_type: str | None = None,
     section: str | None = None,
     q: str | None = None,
+    entity_id: int | None = None,
+    entity_name: str | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[Article]:
@@ -141,6 +143,14 @@ def query_articles(
     if q:
         pattern = f"%{q}%"
         statement = statement.where(or_(Article.title.ilike(pattern), Article.text.ilike(pattern)))
+    if entity_id or entity_name:
+        # Если пришел entity_id, он надежнее названия: фронт может передавать entity_name
+        # только для красивой подписи фильтра. Так мы не делаем повторный join одной таблицы.
+        statement = statement.join(ArticleEntity)
+        if entity_id is not None:
+            statement = statement.where(ArticleEntity.entity_id == entity_id)
+        elif entity_name:
+            statement = statement.join(Entity).where(Entity.name.ilike(f"%{entity_name}%"))
 
     statement = statement.limit(limit).offset(offset)
     return list(db.scalars(statement).all())

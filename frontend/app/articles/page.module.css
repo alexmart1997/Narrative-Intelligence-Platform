@@ -78,6 +78,19 @@
   cursor: pointer;
 }
 
+.inlineButton {
+  margin-left: 10px;
+  padding: 4px 8px;
+  border: 1px solid #cfd6e3;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 .primaryButton {
   border-color: var(--accent);
   background: var(--accent);

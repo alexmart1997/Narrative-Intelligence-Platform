@@ -28,6 +28,9 @@ type NodeMesh = THREE.Mesh & {
   };
 };
 
+const entityNodeTypes = new Set(["person", "organization", "country", "location", "concept"]);
+const routeEdgeTypes = new Set(["same_event_as", "similar_to", "shares_narrative"]);
+
 const nodeTypes = [
   { type: "article", label: "Статья" },
   { type: "source", label: "Источник" },
@@ -126,6 +129,11 @@ export default function ArticleGraphPage() {
         if (node.type === "article" && Number.isFinite(nodeArticleId) && nodeArticleId !== activeArticleId) {
           setActiveArticleId(nodeArticleId);
           router.replace(`/articles/${nodeArticleId}/graph`);
+          return;
+        }
+        const entityId = Number(node.data.entity_id);
+        if (entityNodeTypes.has(node.type) && Number.isFinite(entityId)) {
+          router.push(`/articles?entity_id=${entityId}&entity_name=${encodeURIComponent(node.label)}`);
         }
       }
     });
@@ -205,7 +213,13 @@ export default function ArticleGraphPage() {
           <div className={styles.sceneMeta}>
             <strong>Density map</strong>
             <span>Размер точки = сила события / нарратива</span>
-            <span>Drag = orbit · Wheel = zoom · Click = inspect</span>
+            <span>Клик по статье = открыть ее граф · клик по сущности = статьи с ней</span>
+            <span>Drag = orbit · Wheel = zoom</span>
+          </div>
+          <div className={styles.routeGuide}>
+            <strong>Путь к похожей статье</strong>
+            <span className={styles.routeLine} />
+            <p>Толстые светящиеся дуги ведут к новостям того же события или общего нарратива.</p>
           </div>
           {graph && relatedCount === 0 ? (
             <div className={styles.insight}>
@@ -239,8 +253,8 @@ export default function ArticleGraphPage() {
           {selectedEdge ? <EdgeDetails edge={selectedEdge} /> : null}
           {!selectedNode && !selectedEdge ? (
             <p className={styles.hint}>
-              Кликни по точке или связи. Сцена вращается как 3D-карта: drag для орбиты,
-              колесо для масштаба. Клик по связанной статье перестраивает граф вокруг нее.
+              Кликни по статье, чтобы перейти в ее граф. Клик по персоне, организации,
+              стране или концепту откроет список статей, где эта сущность упоминается.
             </p>
           ) : null}
         </aside>
@@ -269,8 +283,8 @@ function createThreeGraphScene({
 
   const width = Math.max(container.clientWidth, 640);
   const height = Math.max(container.clientHeight, 480);
-  const camera = new THREE.PerspectiveCamera(48, width / height, 1, 5000);
-  camera.position.set(0, 260, 720);
+  const camera = new THREE.PerspectiveCamera(46, width / height, 1, 5000);
+  camera.position.set(0, 220, 680);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -288,8 +302,8 @@ function createThreeGraphScene({
   controls.rotateSpeed = 0.45;
   controls.zoomSpeed = 0.75;
   controls.panSpeed = 0.5;
-  controls.minDistance = 180;
-  controls.maxDistance = 1400;
+  controls.minDistance = 160;
+  controls.maxDistance = 1200;
   controls.target.set(0, 0, 0);
 
   scene.add(new THREE.AmbientLight("#7dd3fc", 0.7));
@@ -304,7 +318,7 @@ function createThreeGraphScene({
   const labelItems: Array<{ element: HTMLDivElement; node: SceneNode }> = [];
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
-  const edgeObjects: Array<{ edge: GraphEdge; line: THREE.Line }> = [];
+  const edgeObjects: Array<{ edge: GraphEdge; object: THREE.Object3D }> = [];
 
   addStarField(scene);
   addDepthRings(scene);
@@ -313,9 +327,9 @@ function createThreeGraphScene({
     const source = nodeById.get(edge.source);
     const target = nodeById.get(edge.target);
     if (!source || !target) continue;
-    const line = createEdgeLine(source, target, edge);
-    scene.add(line);
-    edgeObjects.push({ edge, line });
+    const object = createEdgeObject(source, target, edge);
+    scene.add(object);
+    edgeObjects.push({ edge, object });
   }
 
   for (const node of sceneNodes) {
@@ -325,6 +339,10 @@ function createThreeGraphScene({
     nodeMeshes.push(mesh);
 
     const label = createHtmlLabel(node);
+    label.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onNodeSelect(node);
+    });
     labelLayer.appendChild(label);
     labelItems.push({ element: label, node });
   }
@@ -357,9 +375,10 @@ function createThreeGraphScene({
     }
 
     raycaster.params.Line = { threshold: 9 };
-    const lineHit = raycaster.intersectObjects(edgeObjects.map((item) => item.line), false)[0];
+    const lineHit = raycaster.intersectObjects(edgeObjects.map((item) => item.object), true)[0];
     if (lineHit) {
-      const edgeItem = edgeObjects.find((item) => item.line === lineHit.object);
+      const edgeId = lineHit.object.userData.edgeId;
+      const edgeItem = edgeObjects.find((item) => item.edge.id === edgeId || item.object === lineHit.object);
       if (edgeItem) onEdgeSelect(edgeItem.edge);
     }
   }
@@ -369,7 +388,7 @@ function createThreeGraphScene({
   renderer.domElement.addEventListener("click", click);
 
   function focus() {
-    camera.position.set(0, 260, 720);
+    camera.position.set(0, 220, 680);
     controls.target.set(0, 0, 0);
     controls.update();
   }
@@ -410,40 +429,40 @@ function buildSceneNodes(graph: ArticleGraphResponse, activeArticleId: number): 
   if (active) result.push(toSceneNode(active, new THREE.Vector3(0, 0, 0), true));
 
   sources.forEach((node, index) => {
-    const spread = (index - (sources.length - 1) / 2) * 95;
-    result.push(toSceneNode(node, new THREE.Vector3(-260, 80 + spread, -110 - index * 28), false));
+    const spread = (index - (sources.length - 1) / 2) * 72;
+    result.push(toSceneNode(node, new THREE.Vector3(-190, 58 + spread, -78 - index * 20), false));
   });
 
   narratives.forEach((node, index) => {
-    const spread = (index - (narratives.length - 1) / 2) * 110;
-    result.push(toSceneNode(node, new THREE.Vector3(280, -70 + spread, -130 + index * 36), false));
+    const spread = (index - (narratives.length - 1) / 2) * 82;
+    result.push(toSceneNode(node, new THREE.Vector3(205, -52 + spread, -92 + index * 28), false));
   });
 
   entities.forEach((node, index) => {
     const angle = (index / Math.max(entities.length, 1)) * Math.PI * 2;
-    const radius = 210 + (index % 4) * 42;
-    const y = Math.sin(index * 1.73) * 96;
+    const radius = 150 + (index % 4) * 30;
+    const y = Math.sin(index * 1.73) * 68;
     result.push(toSceneNode(node, new THREE.Vector3(Math.cos(angle) * radius, y, Math.sin(angle) * radius), false));
   });
 
   relatedArticles.forEach((node, index) => {
     const angle = Math.PI * 0.1 + (index / Math.max(relatedArticles.length - 1, 1)) * Math.PI * 0.82;
-    const radius = 340 + (index % 2) * 48;
-    const y = -60 + Math.sin(index * 0.9) * 110;
-    result.push(toSceneNode(node, new THREE.Vector3(Math.cos(angle) * radius, y, -180 + Math.sin(angle) * radius), false));
+    const radius = 235 + (index % 2) * 34;
+    const y = -42 + Math.sin(index * 0.9) * 78;
+    result.push(toSceneNode(node, new THREE.Vector3(Math.cos(angle) * radius, y, -126 + Math.sin(angle) * radius), false));
   });
 
   return result;
 }
 
 function toSceneNode(node: GraphNode, position: THREE.Vector3, focused: boolean): SceneNode {
-  const density = Number(node.data.density_score ?? 1);
-  const baseSize = node.type === "article" ? 12 + density * 3.2 : node.type === "narrative" ? 25 : 16;
+  const density = Math.min(5, Math.max(1, Number(node.data.density_score ?? 1)));
+  const baseSize = node.type === "article" ? 15 + density * 2.3 : node.type === "narrative" ? 23 : 17;
   return {
     ...node,
     color: focused ? "#f97316" : nodePalette[node.type] ?? "#67e8f9",
     position,
-    size: focused ? Math.max(40, baseSize * 1.25) : baseSize
+    size: focused ? Math.max(32, baseSize * 1.08) : baseSize
   };
 }
 
@@ -459,30 +478,80 @@ function createNodeMesh(node: SceneNode, focused: boolean) {
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.copy(node.position);
 
-  const glowGeometry = new THREE.SphereGeometry(node.size * (focused ? 2.35 : 1.9), 32, 24);
+  const glowGeometry = new THREE.SphereGeometry(node.size * (focused ? 1.42 : 1.5), 32, 24);
   const glowMaterial = new THREE.MeshBasicMaterial({
     color: node.color,
     transparent: true,
-    opacity: focused ? 0.18 : 0.09,
+    opacity: focused ? 0.11 : 0.07,
     blending: THREE.AdditiveBlending,
     depthWrite: false
   });
   const glow = new THREE.Mesh(glowGeometry, glowMaterial);
   mesh.add(glow);
+
+  if (node.type === "article" && !focused) {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(node.size * 1.65, 1.15, 10, 80),
+      new THREE.MeshBasicMaterial({
+        color: "#38bdf8",
+        transparent: true,
+        opacity: 0.5,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      })
+    );
+    ring.rotation.x = Math.PI / 2.35;
+    mesh.add(ring);
+  }
   return mesh;
 }
 
-function createEdgeLine(source: SceneNode, target: SceneNode, edge: GraphEdge) {
+function createEdgeObject(source: SceneNode, target: SceneNode, edge: GraphEdge): THREE.Object3D {
   const midpoint = source.position.clone().add(target.position).multiplyScalar(0.5);
-  midpoint.y += 48 + source.position.distanceTo(target.position) * 0.08;
+  midpoint.y += 36 + source.position.distanceTo(target.position) * 0.1;
   const curve = new THREE.QuadraticBezierCurve3(source.position, midpoint, target.position);
+  const color = edgePalette[edge.label] ?? "#7dd3fc";
+  if (routeEdgeTypes.has(edge.label)) {
+    const group = new THREE.Group();
+    group.userData.edgeId = edge.id;
+    const geometry = new THREE.TubeGeometry(curve, 44, edge.label === "same_event_as" ? 3.6 : 2.4, 10, false);
+    const material = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: edge.label === "same_event_as" ? 0.78 : 0.54,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const tube = new THREE.Mesh(geometry, material);
+    tube.userData.edgeId = edge.id;
+    group.add(tube);
+
+    // Световые точки делают маршрут к похожей статье читаемым на общем масштабе.
+    for (let index = 1; index <= 5; index += 1) {
+      const point = curve.getPoint(index / 6);
+      const marker = new THREE.Mesh(
+        new THREE.SphereGeometry(edge.label === "same_event_as" ? 5.2 : 4.4, 16, 12),
+        new THREE.MeshBasicMaterial({
+          color: index % 2 === 0 ? "#f97316" : color,
+          transparent: true,
+          opacity: 0.92,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false
+        })
+      );
+      marker.position.copy(point);
+      marker.userData.edgeId = edge.id;
+      group.add(marker);
+    }
+    return group;
+  }
+
   const points = curve.getPoints(36);
   const geometry = new THREE.BufferGeometry().setFromPoints(points);
-  const color = edgePalette[edge.label] ?? "#7dd3fc";
   const material = new THREE.LineBasicMaterial({
     color,
     transparent: true,
-    opacity: ["same_event_as", "shares_narrative"].includes(edge.label) ? 0.74 : 0.34,
+    opacity: 0.34,
     blending: THREE.AdditiveBlending
   });
   return new THREE.Line(geometry, material);

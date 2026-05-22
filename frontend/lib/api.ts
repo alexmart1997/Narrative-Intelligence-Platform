@@ -183,6 +183,8 @@ type ArticleFilters = {
   sourceCode?: string;
   language?: string;
   q?: string;
+  entityId?: string;
+  entityName?: string;
 };
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -228,6 +230,12 @@ export async function getArticles(filters: ArticleFilters): Promise<ArticleListR
   }
   if (filters.q) {
     params.set("q", filters.q);
+  }
+  if (filters.entityId) {
+    params.set("entity_id", filters.entityId);
+  }
+  if (filters.entityName) {
+    params.set("entity_name", filters.entityName);
   }
   return request<ArticleListResponse>(`/articles?${params.toString()}`);
 }

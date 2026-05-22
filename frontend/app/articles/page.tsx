@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArticleListItem,
   SimilarArticleItem,
@@ -24,12 +24,21 @@ type ActionState = {
 type ArticleAction = "analysis" | "analyze" | "compare" | "graph" | "similar";
 
 export default function ArticlesPage() {
+  return (
+    <Suspense fallback={<main className={styles.page}><div className={styles.loading}>Загружаю статьи...</div></main>}>
+      <ArticlesContent />
+    </Suspense>
+  );
+}
+
+function ArticlesContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [articles, setArticles] = useState<ArticleListItem[]>([]);
   const [sources, setSources] = useState<SourceInfo[]>([]);
   const [sourceCode, setSourceCode] = useState("");
   const [language, setLanguage] = useState("");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionState, setActionState] = useState<ActionState>(null);
@@ -38,6 +47,8 @@ export default function ArticlesPage() {
   const [similarByArticle, setSimilarByArticle] = useState<Record<number, SimilarArticleItem[]>>({});
 
   const languages = useMemo(() => ["ru", "en"], []);
+  const entityId = searchParams.get("entity_id") ?? "";
+  const entityName = searchParams.get("entity_name") ?? "";
 
   async function loadArticles() {
     setLoading(true);
@@ -45,7 +56,7 @@ export default function ArticlesPage() {
     try {
       const [sourceList, articleList] = await Promise.all([
         getSources(),
-        getArticles({ sourceCode, language, q: query })
+        getArticles({ sourceCode, language, q: query, entityId, entityName })
       ]);
       setSources(sourceList);
       setArticles(articleList.items);
@@ -57,9 +68,10 @@ export default function ArticlesPage() {
   }
 
   useEffect(() => {
+    setQuery(searchParams.get("q") ?? "");
     loadArticles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchParams]);
 
   async function handleAnalyze(articleId: number) {
     setActionState({ articleId, action: "analyze" });
@@ -173,6 +185,14 @@ export default function ArticlesPage() {
       </section>
 
       {error ? <div className={styles.error}>{error}</div> : null}
+      {entityId || entityName ? (
+        <div className={styles.loading}>
+          Фильтр по сущности: <strong>{entityName || `ID ${entityId}`}</strong>{" "}
+          <button className={styles.inlineButton} onClick={() => router.push("/articles")}>
+            Сбросить
+          </button>
+        </div>
+      ) : null}
       {actionMessage ? <div className={styles.loading}>{actionMessage}</div> : null}
 
       <section className={styles.content}>

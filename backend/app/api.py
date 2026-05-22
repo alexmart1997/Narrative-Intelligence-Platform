@@ -104,6 +104,8 @@ def list_articles(
     material_type: Optional[str] = None,
     section: Optional[str] = None,
     q: Optional[str] = None,
+    entity_id: Optional[int] = None,
+    entity_name: Optional[str] = None,
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -121,6 +123,8 @@ def list_articles(
         material_type=material_type,
         section=section,
         q=q,
+        entity_id=entity_id,
+        entity_name=entity_name,
         limit=limit,
         offset=offset,
     )
