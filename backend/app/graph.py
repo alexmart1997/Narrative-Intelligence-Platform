@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Article, ArticleAnalysis
+from app.models import Article, ArticleAnalysis, ArticleEntity, Entity
 
 
 GRAPH_SIMILARITY_SCORE_THRESHOLD = 0.55
@@ -21,6 +21,7 @@ def build_article_graph(
     article_id: int,
     include_related: bool = False,
     limit_related: int = 10,
+    focus_entity_id: int | None = None,
 ) -> dict[str, list[dict[str, Any]]]:
     """Строит граф статьи, источника, сущностей, отношений и нарратива."""
 
@@ -37,6 +38,11 @@ def build_article_graph(
 
     def add_node(node_id: str, label: str, node_type: str, data: dict[str, Any] | None = None) -> None:
         if node_id in seen_nodes:
+            if data:
+                for node in nodes:
+                    if node["id"] == node_id:
+                        node["data"] = {**node.get("data", {}), **data}
+                        break
             return
         seen_nodes.add(node_id)
         nodes.append({"id": node_id, "label": label, "type": node_type, "data": data or {}})
@@ -157,7 +163,95 @@ def build_article_graph(
             limit=limit_related,
         )
 
+    if focus_entity_id is not None:
+        _add_entity_focus_articles(
+            db=db,
+            entity_id=focus_entity_id,
+            add_node=add_node,
+            add_edge=add_edge,
+            base_article_id=article.id,
+            limit=limit_related,
+        )
+
     return {"nodes": nodes, "edges": edges}
+
+
+def _add_entity_focus_articles(
+    db: Session,
+    entity_id: int,
+    add_node: Any,
+    add_edge: Any,
+    base_article_id: int,
+    limit: int,
+) -> None:
+    """Добавляет статьи, где встречается выбранная сущность.
+
+    Это нужно для навигации внутри 3D-графа: пользователь кликает по персоне,
+    организации или концепту и видит новости, которые содержат тот же объект.
+    """
+
+    entity = db.get(Entity, entity_id)
+    if entity is None:
+        return
+
+    entity_node_id = f"entity_{entity.id}"
+    node_type = entity.type.value if entity.type.value in _allowed_node_types() else "concept"
+    add_node(
+        entity_node_id,
+        entity.name,
+        node_type,
+        {
+            "entity_id": entity.id,
+            "is_focus": True,
+            "focus_mode": "entity_articles",
+        },
+    )
+
+    items = list(
+        db.scalars(
+            select(ArticleEntity)
+            .join(Article)
+            .where(ArticleEntity.entity_id == entity_id)
+            .order_by(Article.published_at.desc())
+            .limit(limit)
+        ).all()
+    )
+
+    for item in items:
+        article = item.article
+        node_id = f"article_{article.id}" if article.id == base_article_id else f"related_article_{article.id}"
+        add_node(
+            node_id,
+            article.title,
+            "article",
+            {
+                "article_id": article.id,
+                "source_name": article.source.name if article.source else "unknown",
+                "published_at": article.published_at.isoformat(),
+                "language": article.language,
+                "relation_hint": "entity_focus",
+                "focus_entity_id": entity.id,
+                "focus_entity_name": entity.name,
+                **_article_density_data(article),
+            },
+        )
+        if article.id != base_article_id:
+            _add_related_article_context(
+                add_node=add_node,
+                add_edge=add_edge,
+                article=article,
+                article_node_id=node_id,
+            )
+        add_edge(
+            entity_node_id,
+            node_id,
+            "entity_in_article",
+            {
+                "type": "entity_in_article",
+                "role": item.role,
+                "importance_score": item.importance_score,
+            },
+        )
 
 
 def _add_related_articles(

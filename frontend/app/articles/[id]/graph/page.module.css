@@ -216,6 +216,7 @@
 .edgeLegend,
 .sceneMeta,
 .routeGuide,
+.focusBanner,
 .insight,
 .state,
 .error {
@@ -336,6 +337,44 @@
   font-size: 12px;
   font-weight: 700;
   line-height: 1.4;
+}
+
+.focusBanner {
+  left: 18px;
+  bottom: 18px;
+  display: grid;
+  gap: 6px;
+  max-width: 320px;
+  padding: 12px 14px;
+  border-color: rgba(251, 191, 36, 0.34);
+  background: rgba(20, 13, 4, 0.62);
+}
+
+.focusBanner strong {
+  color: #fbbf24;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.focusBanner span {
+  color: #f8fafc;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.focusBanner button {
+  width: fit-content;
+  margin-top: 4px;
+  padding: 6px 9px;
+  border: 1px solid rgba(251, 191, 36, 0.36);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fde68a;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
 }
 
 .routeGuide strong {

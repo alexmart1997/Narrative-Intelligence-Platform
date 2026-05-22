@@ -300,6 +300,7 @@ def article_graph_endpoint(
     article_id: int,
     include_related: bool = False,
     limit_related: int = Query(default=10, ge=1, le=50),
+    focus_entity_id: Optional[int] = None,
     db: Session = Depends(get_db),
 ) -> dict[str, list[dict]]:
     """Возвращает граф статьи, источника, сущностей, отношений и нарратива."""
@@ -310,6 +311,7 @@ def article_graph_endpoint(
             article_id,
             include_related=include_related,
             limit_related=limit_related,
+            focus_entity_id=focus_entity_id,
         )
     except GraphError as exc:
         message = str(exc)

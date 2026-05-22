@@ -262,11 +262,12 @@ export async function getArticleEvidence(articleId: number): Promise<Record<stri
 
 export async function getArticleGraph(
   articleId: number,
-  options: { includeRelated?: boolean; limitRelated?: number } = {}
+  options: { includeRelated?: boolean; limitRelated?: number; focusEntityId?: number | null } = {}
 ): Promise<ArticleGraphResponse> {
   const params = new URLSearchParams();
   if (options.includeRelated) params.set("include_related", "true");
   if (options.limitRelated) params.set("limit_related", String(options.limitRelated));
+  if (options.focusEntityId) params.set("focus_entity_id", String(options.focusEntityId));
   const suffix = params.toString() ? `?${params.toString()}` : "";
   return request<ArticleGraphResponse>(`/graph/article/${articleId}${suffix}`);
 }

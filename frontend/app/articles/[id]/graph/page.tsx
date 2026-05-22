@@ -29,7 +29,7 @@ type NodeMesh = THREE.Mesh & {
 };
 
 const entityNodeTypes = new Set(["person", "organization", "country", "location", "concept"]);
-const routeEdgeTypes = new Set(["same_event_as", "similar_to", "shares_narrative"]);
+const routeEdgeTypes = new Set(["same_event_as", "similar_to", "shares_narrative", "entity_in_article"]);
 
 const nodeTypes = [
   { type: "article", label: "Статья" },
@@ -51,7 +51,8 @@ const edgeLabels: Record<string, string> = {
   supports_narrative: "поддерживает нарратив",
   same_event_as: "то же событие",
   similar_to: "похожая статья",
-  shares_narrative: "общий нарратив"
+  shares_narrative: "общий нарратив",
+  entity_in_article: "содержит объект"
 };
 
 const nodePalette: Record<string, string> = {
@@ -68,6 +69,7 @@ const nodePalette: Record<string, string> = {
 const edgePalette: Record<string, string> = {
   same_event_as: "#86efac",
   similar_to: "#38bdf8",
+  entity_in_article: "#fbbf24",
   shares_narrative: "#fb7185",
   sympathizes_with: "#86efac",
   criticizes: "#fb7185",
@@ -87,6 +89,7 @@ export default function ArticleGraphPage() {
   const [graph, setGraph] = useState<ArticleGraphResponse | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<GraphEdge | null>(null);
+  const [focusEntity, setFocusEntity] = useState<{ id: number; name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,12 +106,13 @@ export default function ArticleGraphPage() {
 
   useEffect(() => {
     setActiveArticleId(initialArticleId);
+    setFocusEntity(null);
   }, [initialArticleId]);
 
   useEffect(() => {
-    loadGraph(activeArticleId);
+    loadGraph(activeArticleId, focusEntity?.id ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeArticleId]);
+  }, [activeArticleId, focusEntity?.id]);
 
   useEffect(() => {
     if (!graph || !containerRef.current) return;
@@ -127,13 +131,14 @@ export default function ArticleGraphPage() {
         setSelectedEdge(null);
         const nodeArticleId = Number(node.data.article_id);
         if (node.type === "article" && Number.isFinite(nodeArticleId) && nodeArticleId !== activeArticleId) {
+          setFocusEntity(null);
           setActiveArticleId(nodeArticleId);
           router.replace(`/articles/${nodeArticleId}/graph`);
           return;
         }
         const entityId = Number(node.data.entity_id);
         if (entityNodeTypes.has(node.type) && Number.isFinite(entityId)) {
-          router.push(`/articles?entity_id=${entityId}&entity_name=${encodeURIComponent(node.label)}`);
+          setFocusEntity({ id: entityId, name: node.label });
         }
       }
     });
@@ -144,14 +149,22 @@ export default function ArticleGraphPage() {
     };
   }, [activeArticleId, graph, router]);
 
-  async function loadGraph(articleId: number) {
+  async function loadGraph(articleId: number, focusEntityId: number | null = focusEntity?.id ?? null) {
     setLoading(true);
     setError(null);
     try {
-      const data = await getArticleGraph(articleId, { includeRelated: true, limitRelated: 30 });
+      const data = await getArticleGraph(articleId, {
+        includeRelated: true,
+        limitRelated: 30,
+        focusEntityId
+      });
       setGraph(data);
       setSelectedEdge(null);
-      setSelectedNode(data.nodes.find((node) => node.id === `article_${articleId}`) ?? null);
+      setSelectedNode(
+        data.nodes.find((node) => Boolean(node.data.is_focus))
+        ?? data.nodes.find((node) => node.id === `article_${articleId}`)
+        ?? null
+      );
     } catch (caught) {
       setGraph(null);
       setSelectedNode(null);
@@ -194,6 +207,11 @@ export default function ArticleGraphPage() {
           <button onClick={() => sceneApiRef.current?.rerun()} disabled={!graph || loading}>
             Сфокусировать
           </button>
+          {focusEntity ? (
+            <button onClick={() => setFocusEntity(null)} disabled={loading || processing}>
+              Вернуться к статье
+            </button>
+          ) : null}
           <button onClick={() => loadGraph(activeArticleId)} disabled={loading || processing}>
             Обновить
           </button>
@@ -213,13 +231,20 @@ export default function ArticleGraphPage() {
           <div className={styles.sceneMeta}>
             <strong>Density map</strong>
             <span>Размер точки = сила события / нарратива</span>
-            <span>Клик по статье = открыть ее граф · клик по сущности = статьи с ней</span>
+            <span>Клик по статье = открыть ее граф · клик по сущности = переезд к новостям с ней</span>
             <span>Drag = orbit · Wheel = zoom</span>
           </div>
+          {focusEntity ? (
+            <div className={styles.focusBanner}>
+              <strong>Фокус на объекте</strong>
+              <span>{focusEntity.name}</span>
+              <button onClick={() => setFocusEntity(null)}>Показать исходную статью</button>
+            </div>
+          ) : null}
           <div className={styles.routeGuide}>
-            <strong>Путь к похожей статье</strong>
+            <strong>Маршруты к связанным новостям</strong>
             <span className={styles.routeLine} />
-            <p>Толстые светящиеся дуги ведут к новостям того же события или общего нарратива.</p>
+            <p>Светящиеся дуги ведут к похожим статьям, общим событиям и новостям с выбранным объектом.</p>
           </div>
           {graph && relatedCount === 0 ? (
             <div className={styles.insight}>
@@ -254,7 +279,7 @@ export default function ArticleGraphPage() {
           {!selectedNode && !selectedEdge ? (
             <p className={styles.hint}>
               Кликни по статье, чтобы перейти в ее граф. Клик по персоне, организации,
-              стране или концепту откроет список статей, где эта сущность упоминается.
+              стране или концепту перестроит сцену вокруг новостей с этим объектом.
             </p>
           ) : null}
         </aside>
@@ -419,14 +444,27 @@ function createThreeGraphScene({
 
 function buildSceneNodes(graph: ArticleGraphResponse, activeArticleId: number): SceneNode[] {
   const activeId = `article_${activeArticleId}`;
+  const focusEntity = graph.nodes.find((node) => Boolean(node.data.is_focus));
   const relatedArticles = graph.nodes.filter((node) => node.type === "article" && node.id !== activeId);
-  const entities = graph.nodes.filter((node) => !["article", "source", "narrative"].includes(node.type));
+  const entities = graph.nodes.filter((node) => !["article", "source", "narrative"].includes(node.type) && node.id !== focusEntity?.id);
   const sources = graph.nodes.filter((node) => node.type === "source");
   const narratives = graph.nodes.filter((node) => node.type === "narrative");
   const active = graph.nodes.find((node) => node.id === activeId);
   const result: SceneNode[] = [];
 
-  if (active) result.push(toSceneNode(active, new THREE.Vector3(0, 0, 0), true));
+  if (focusEntity) {
+    result.push(toSceneNode(focusEntity, new THREE.Vector3(0, 0, 0), true));
+    if (active) result.push(toSceneNode(active, new THREE.Vector3(-105, 18, 82), false));
+
+    relatedArticles.forEach((node, index) => {
+      const angle = (index / Math.max(relatedArticles.length, 1)) * Math.PI * 2;
+      const radius = 205 + (index % 3) * 28;
+      const y = Math.sin(index * 1.15) * 62;
+      result.push(toSceneNode(node, new THREE.Vector3(Math.cos(angle) * radius, y, Math.sin(angle) * radius), false));
+    });
+  } else if (active) {
+    result.push(toSceneNode(active, new THREE.Vector3(0, 0, 0), true));
+  }
 
   sources.forEach((node, index) => {
     const spread = (index - (sources.length - 1) / 2) * 72;
@@ -445,12 +483,14 @@ function buildSceneNodes(graph: ArticleGraphResponse, activeArticleId: number): 
     result.push(toSceneNode(node, new THREE.Vector3(Math.cos(angle) * radius, y, Math.sin(angle) * radius), false));
   });
 
-  relatedArticles.forEach((node, index) => {
-    const angle = Math.PI * 0.1 + (index / Math.max(relatedArticles.length - 1, 1)) * Math.PI * 0.82;
-    const radius = 235 + (index % 2) * 34;
-    const y = -42 + Math.sin(index * 0.9) * 78;
-    result.push(toSceneNode(node, new THREE.Vector3(Math.cos(angle) * radius, y, -126 + Math.sin(angle) * radius), false));
-  });
+  if (!focusEntity) {
+    relatedArticles.forEach((node, index) => {
+      const angle = Math.PI * 0.1 + (index / Math.max(relatedArticles.length - 1, 1)) * Math.PI * 0.82;
+      const radius = 235 + (index % 2) * 34;
+      const y = -42 + Math.sin(index * 0.9) * 78;
+      result.push(toSceneNode(node, new THREE.Vector3(Math.cos(angle) * radius, y, -126 + Math.sin(angle) * radius), false));
+    });
+  }
 
   return result;
 }
