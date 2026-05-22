@@ -67,6 +67,7 @@ def build_article_graph(
             "url": article.url,
             "published_at": article.published_at.isoformat(),
             "language": article.language,
+            **_article_density_data(article),
         },
     )
     add_node(
@@ -229,9 +230,38 @@ def _add_related_article_node(add_node: Any, article: Article, relation_hint: st
             "source_name": article.source.name if article.source else "unknown",
             "published_at": article.published_at.isoformat(),
             "relation_hint": relation_hint,
+            **_article_density_data(article),
         },
     )
     return node_id
+
+
+def _article_density_data(article: Article) -> dict[str, Any]:
+    """Считает простую плотность новости для визуализации графа.
+
+    Плотность растет, если статья входит в большое событие, поддерживает
+    найденные нарративы, содержит много сущностей и отношений.
+    """
+
+    event_article_count = max((len(link.event.articles) for link in article.events), default=1)
+    narrative_evidence_count = len(article.narrative_evidence)
+    entity_count = len(article.entities)
+    relation_count = len(article.relations)
+    density_score = min(
+        10,
+        1
+        + event_article_count
+        + narrative_evidence_count
+        + round(entity_count / 2)
+        + round(relation_count / 2),
+    )
+    return {
+        "density_score": density_score,
+        "event_article_count": event_article_count,
+        "narrative_evidence_count": narrative_evidence_count,
+        "entity_count": entity_count,
+        "relation_count": relation_count,
+    }
 
 
 def _similar_articles(db: Session, article_id: int, limit: int) -> list[dict[str, Any]]:

@@ -311,6 +311,7 @@ function toElements(graph: ArticleGraphResponse, activeArticleId: number): Eleme
         id: node.id,
         label: node.label,
         type: node.type,
+        densityScore: Number(node.data.density_score ?? 1),
         focus: node.id === `article_${activeArticleId}` ? "true" : "false",
         relationHint: typeof node.data.relation_hint === "string" ? node.data.relation_hint : ""
       }
@@ -332,137 +333,151 @@ function graphStyles(): StylesheetJson {
     {
       selector: "node",
       style: {
-        "background-color": "#7c8aa5",
-        "border-color": "#ffffff",
-        "border-width": 3,
-        color: "#111827",
-        "font-size": 12,
+        "background-color": "#66e8ff",
+        "border-color": "rgba(221, 252, 255, 0.9)",
+        "border-width": 1,
+        "box-shadow": "0 0 18px #38bdf8",
+        color: "#94f3ff",
+        "font-size": 8,
         "font-weight": 700,
         label: "data(label)",
         "min-zoomed-font-size": 7,
-        "overlay-padding": 6,
-        "text-background-color": "#ffffff",
-        "text-background-opacity": 0.9,
-        "text-background-padding": "4px",
-        "text-max-width": 150,
+        opacity: 0.94,
+        "overlay-color": "#67e8f9",
+        "overlay-padding": 10,
+        "overlay-opacity": 0,
+        "text-background-opacity": 0,
+        "text-max-width": 130,
+        "text-opacity": 0.82,
         "text-wrap": "wrap",
         "text-valign": "bottom",
-        "text-margin-y": 8,
-        height: 48,
+        "text-margin-y": 5,
+        height: 18,
         shape: "ellipse",
-        width: 48
+        width: 18
       }
     },
     {
       selector: 'node[type = "article"]',
       style: {
-        "background-color": "#2563eb",
-        height: 82,
-        shape: "round-rectangle",
-        width: 118
+        "background-color": "#38bdf8",
+        "border-color": "#dffbff",
+        "border-width": 2,
+        color: "#67e8f9",
+        "font-size": 9,
+        height: "mapData(densityScore, 1, 10, 20, 88)",
+        shape: "ellipse",
+        width: "mapData(densityScore, 1, 10, 20, 88)"
       }
     },
     {
       selector: 'node[focus = "true"]',
       style: {
-        "background-color": "#0f172a",
-        "border-color": "#38bdf8",
-        "border-width": 6,
-        height: 112,
-        width: 150
+        "background-color": "#f97316",
+        "border-color": "#fed7aa",
+        "border-width": 4,
+        color: "#ffedd5",
+        "font-size": 11,
+        height: 96,
+        width: 96
       }
     },
     {
       selector: 'node[type = "source"]',
       style: {
-        "background-color": "#16a34a",
+        "background-color": "#a7f3d0",
+        "border-color": "#ecfdf5",
         shape: "diamond"
       }
     },
     {
       selector: 'node[type = "person"]',
-      style: { "background-color": "#f59e0b" }
+      style: { "background-color": "#fbbf24", color: "#fef3c7" }
     },
     {
       selector: 'node[type = "organization"]',
       style: {
-        "background-color": "#7c3aed",
-        shape: "round-rectangle"
+        "background-color": "#c084fc",
+        shape: "ellipse"
       }
     },
     {
       selector: 'node[type = "country"]',
       style: {
-        "background-color": "#0891b2",
+        "background-color": "#22d3ee",
         shape: "hexagon"
       }
     },
     {
       selector: 'node[type = "location"]',
       style: {
-        "background-color": "#0d9488",
+        "background-color": "#2dd4bf",
         shape: "tag"
       }
     },
     {
       selector: 'node[type = "concept"]',
       style: {
-        "background-color": "#64748b",
+        "background-color": "#e0f2fe",
         shape: "ellipse"
       }
     },
     {
       selector: 'node[type = "narrative"]',
       style: {
-        "background-color": "#e11d48",
-        shape: "round-tag",
-        width: 120
+        "background-color": "#fb7185",
+        "border-color": "#ffe4e6",
+        color: "#ffe4e6",
+        height: 46,
+        shape: "ellipse",
+        width: 46
       }
     },
     {
       selector: 'node[relationHint = "same_event"]',
       style: {
-        "border-color": "#10b981",
-        "border-width": 5
+        "border-color": "#86efac",
+        "border-width": 3
       }
     },
     {
       selector: 'node[relationHint = "qdrant_similarity"]',
       style: {
-        "border-color": "#38bdf8",
-        "border-width": 5
+        "border-color": "#7dd3fc",
+        "border-width": 3
       }
     },
     {
       selector: 'node[relationHint = "narrative_similarity"]',
       style: {
-        "border-color": "#f43f5e",
-        "border-width": 5
+        "border-color": "#fda4af",
+        "border-width": 3
       }
     },
     {
       selector: "edge",
       style: {
         "curve-style": "bezier",
-        "font-size": 10,
-        "line-color": "#a8b3c7",
-        "target-arrow-color": "#a8b3c7",
+        "font-size": 8,
+        "line-color": "rgba(125, 211, 252, 0.38)",
+        "target-arrow-color": "rgba(125, 211, 252, 0.38)",
         "target-arrow-shape": "triangle",
-        color: "#334155",
+        color: "#bae6fd",
         label: "data(label)",
         "min-zoomed-font-size": 7,
-        "text-background-color": "#f7f8fb",
-        "text-background-opacity": 0.94,
-        "text-background-padding": "3px",
-        width: 2
+        opacity: 0.72,
+        "text-background-opacity": 0,
+        "text-opacity": 0.66,
+        width: 1
       }
     },
     {
       selector: 'edge[edgeType = "same_event_as"]',
       style: {
-        "line-color": "#10b981",
-        "target-arrow-color": "#10b981",
-        width: 4
+        "line-color": "#86efac",
+        "target-arrow-color": "#86efac",
+        opacity: 0.95,
+        width: 2.4
       }
     },
     {
@@ -470,39 +485,42 @@ function graphStyles(): StylesheetJson {
       style: {
         "line-color": "#38bdf8",
         "target-arrow-color": "#38bdf8",
+        opacity: 0.82,
         "line-style": "dashed"
       }
     },
     {
       selector: 'edge[edgeType = "shares_narrative"]',
       style: {
-        "line-color": "#f43f5e",
-        "target-arrow-color": "#f43f5e",
+        "line-color": "#fb7185",
+        "target-arrow-color": "#fb7185",
+        opacity: 0.82,
         "line-style": "dotted"
       }
     },
     {
       selector: 'edge[edgeType = "sympathizes_with"]',
       style: {
-        "line-color": "#16a34a",
-        "target-arrow-color": "#16a34a"
+        "line-color": "#86efac",
+        "target-arrow-color": "#86efac"
       }
     },
     {
       selector: 'edge[edgeType = "criticizes"]',
       style: {
-        "line-color": "#dc2626",
-        "target-arrow-color": "#dc2626"
+        "line-color": "#fb7185",
+        "target-arrow-color": "#fb7185"
       }
     },
     {
       selector: "node:selected, edge:selected",
       style: {
-        "border-color": "#111827",
-        "line-color": "#111827",
-        "target-arrow-color": "#111827",
+        "border-color": "#ffffff",
+        "line-color": "#ffffff",
+        "target-arrow-color": "#ffffff",
         "border-width": 5,
-        width: 5
+        width: 3,
+        opacity: 1
       }
     }
   ] as StylesheetJson;
@@ -536,6 +554,11 @@ function translateDataKey(key: string) {
     relation_type: "Тип отношения",
     description: "Описание",
     relation_hint: "Причина связи",
+    density_score: "Плотность",
+    event_article_count: "Статей в событии",
+    narrative_evidence_count: "Доказательств нарратива",
+    entity_count: "Сущностей",
+    relation_count: "Отношений",
     synthetic: "Создано из вывода LLM",
     polarity: "Полярность",
     type: "Тип"
@@ -544,6 +567,6 @@ function translateDataKey(key: string) {
 }
 
 function formatNumber(value: number) {
-  if (value > 0 && value <= 1) return `${Math.round(value * 100)}%`;
+  if (!Number.isInteger(value) && value > 0 && value <= 1) return `${Math.round(value * 100)}%`;
   return String(value);
 }
