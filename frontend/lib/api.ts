@@ -185,6 +185,9 @@ type ArticleFilters = {
   q?: string;
   entityId?: string;
   entityName?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  materialType?: string;
 };
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -236,6 +239,15 @@ export async function getArticles(filters: ArticleFilters): Promise<ArticleListR
   }
   if (filters.entityName) {
     params.set("entity_name", filters.entityName);
+  }
+  if (filters.dateFrom) {
+    params.set("date_from", filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    params.set("date_to", filters.dateTo);
+  }
+  if (filters.materialType) {
+    params.set("material_type", filters.materialType);
   }
   return request<ArticleListResponse>(`/articles?${params.toString()}`);
 }

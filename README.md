@@ -137,6 +137,20 @@ curl -X POST http://localhost:8000/llm/test \
 - PostgreSQL: `localhost:5432`
 - Qdrant REST API: `http://localhost:6333`
 
+## Frontend dashboard
+
+Главная страница `http://localhost:3000/articles` оформлена как premium intelligence command center:
+
+- верхняя command bar с глобальным поиском, быстрыми действиями и переключателем плотности;
+- карточки метрик по статьям, событиям, источникам, нарративам, необработанным материалам и средней уверенности;
+- timeline strip по дням публикации;
+- dark intelligence feed с карточками статей, analysis summary, sentiment, framing, narrative hypothesis и top entities;
+- правая insight panel с event spotlight, top narratives, source mix и AI insight callout;
+- фильтры по source, date range, language, material type, status, sentiment и search query;
+- command palette по `Cmd+K` для быстрого поиска и переходов.
+
+Если часть данных еще не рассчитана backend-ом, dashboard показывает graceful fallback и не ломает основной список статей.
+
 ## Миграции БД
 
 Миграции лежат в `backend/alembic`. Команды выполняются из папки `backend` с активированным виртуальным окружением:
