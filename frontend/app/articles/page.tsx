@@ -121,10 +121,11 @@ function ArticlesContent() {
         }),
         getNarratives().catch(() => [] as NarrativeListItem[])
       ]);
+      const uniqueArticles = deduplicateArticleList(articleList.items);
       setSources(sourceList);
-      setArticles(articleList.items);
+      setArticles(uniqueArticles);
       setNarratives(narrativeList);
-      await hydrateAnalyses(articleList.items);
+      await hydrateAnalyses(uniqueArticles);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось загрузить статьи");
     } finally {
@@ -687,6 +688,34 @@ function EmptyState({ onReset }: { onReset: () => void }) {
       <button onClick={onReset}>Reset filters</button>
     </div>
   );
+}
+
+function deduplicateArticleList(items: ArticleListItem[]) {
+  const seen = new Set<string>();
+  const result: ArticleListItem[] = [];
+  for (const item of items) {
+    const key = articleDedupeKey(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(item);
+  }
+  return result;
+}
+
+function articleDedupeKey(item: ArticleListItem) {
+  try {
+    const url = new URL(item.url);
+    url.hash = "";
+    url.searchParams.delete("from");
+    for (const key of Array.from(url.searchParams.keys())) {
+      if (key.toLowerCase().startsWith("utm_")) {
+        url.searchParams.delete(key);
+      }
+    }
+    return `${item.source_code ?? item.source_name}:${url.toString().replace(/\/$/, "")}`;
+  } catch {
+    return `${item.source_code ?? item.source_name}:${item.title.trim().toLowerCase()}:${item.published_at}`;
+  }
 }
 
 function buildMetrics(

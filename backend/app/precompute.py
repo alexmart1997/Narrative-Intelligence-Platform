@@ -7,11 +7,15 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.article_similarity import SIMILARITY_GUARD_VERSION
 from app.comparison import compare_with_similar
 from app.events import detect_event_for_article
 from app.graph import build_article_graph
 from app.models import Article, ArticleAnalysis, ArticlePrecomputeCache, Source
 from app.vector import embed_article, find_similar_articles
+
+
+PRECOMPUTE_CACHE_VERSION = SIMILARITY_GUARD_VERSION
 
 
 def precompute_article_intelligence(db: Session, params: dict[str, Any]) -> dict[str, Any]:
@@ -42,7 +46,7 @@ def precompute_article_intelligence(db: Session, params: dict[str, Any]) -> dict
                 detect_event_for_article(db, article.id)
 
             graph = build_article_graph(db, article.id, include_related=True, limit_related=params.get("limit_related", 30))
-            similar = find_similar_articles(db, article_id=article.id, limit=params.get("similar_limit", 10), min_score=0.55)
+            similar = find_similar_articles(db, article_id=article.id, limit=params.get("similar_limit", 10), min_score=0.68)
             compare = compare_with_similar(db, article.id) if include_compare else None
 
             cache.graph_json = json.dumps(graph, ensure_ascii=False, default=str)
@@ -81,13 +85,17 @@ def get_cached_graph(db: Session, article_id: int) -> dict[str, Any] | None:
 def get_cached_similar(db: Session, article_id: int) -> list[dict[str, Any]] | None:
     cache = db.scalar(select(ArticlePrecomputeCache).where(ArticlePrecomputeCache.article_id == article_id))
     data = _loads_json(cache.similar_json) if cache and cache.similar_json and cache.status == "ready" else None
-    return data if isinstance(data, list) else None
+    if not isinstance(data, list) or not _has_fresh_list_cache(data):
+        return None
+    return data
 
 
 def get_cached_compare(db: Session, article_id: int) -> list[dict[str, Any]] | None:
     cache = db.scalar(select(ArticlePrecomputeCache).where(ArticlePrecomputeCache.article_id == article_id))
     data = _loads_json(cache.compare_json) if cache and cache.compare_json and cache.status == "ready" else None
-    return data if isinstance(data, list) else None
+    if not isinstance(data, list) or not _has_fresh_list_cache(data):
+        return None
+    return data
 
 
 def _select_articles(db: Session, params: dict[str, Any]) -> list[Article]:
@@ -135,6 +143,16 @@ def _has_fresh_graph_shape(data: dict[str, Any]) -> bool:
         if not isinstance(node, dict) or node.get("type") != "article":
             continue
         node_data = node.get("data")
-        if not isinstance(node_data, dict) or "display_label" not in node_data:
+        if (
+            not isinstance(node_data, dict)
+            or "display_label" not in node_data
+            or node_data.get("similarity_guard_version") != PRECOMPUTE_CACHE_VERSION
+        ):
             return False
     return True
+
+
+def _has_fresh_list_cache(data: list[dict[str, Any]]) -> bool:
+    """Не используем старые similar/compare cache без версии смыслового фильтра."""
+
+    return all(isinstance(item, dict) and item.get("guard_version") == PRECOMPUTE_CACHE_VERSION for item in data)

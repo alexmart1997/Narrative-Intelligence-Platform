@@ -327,7 +327,7 @@ export async function getArticleGraph(
 }
 
 export async function getSimilarArticles(articleId: number): Promise<SimilarArticlesResponse> {
-  return request<SimilarArticlesResponse>(`/articles/${articleId}/similar?limit=10&min_score=0.55`);
+  return request<SimilarArticlesResponse>(`/articles/${articleId}/similar?limit=10&min_score=0.68`);
 }
 
 export async function compareWithSimilar(articleId: number): Promise<CompareWithSimilarResponse> {

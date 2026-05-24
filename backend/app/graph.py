@@ -6,10 +6,15 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.article_similarity import (
+    SIMILARITY_GUARD_VERSION,
+    articles_are_contextually_related,
+    relation_debug_data,
+)
 from app.models import Article, ArticleAnalysis, ArticleEntity, Entity
 
 
-GRAPH_SIMILARITY_SCORE_THRESHOLD = 0.55
+GRAPH_SIMILARITY_SCORE_THRESHOLD = 0.68
 
 
 class GraphError(Exception):
@@ -285,7 +290,10 @@ def _add_related_articles(
             if related_link.article_id == article.id or added_counts["same_event_as"] >= limit:
                 continue
             related_article = related_link.article
-            if _looks_like_same_source_duplicate(article, related_article):
+            probability = float(related_link.same_event_probability or 0)
+            if probability < 0.7:
+                continue
+            if not articles_are_contextually_related(article, related_article, probability, mode="event"):
                 continue
             related_node_id = _add_related_article_node(add_node, related_article, "same_event")
             expand_related_article(related_article, related_node_id)
@@ -296,7 +304,8 @@ def _add_related_articles(
                 {
                     "type": "same_event_as",
                     "event_id": event_link.event_id,
-                    "same_event_probability": related_link.same_event_probability,
+                    "same_event_probability": probability,
+                    "match_reason": relation_debug_data(article, related_article, probability),
                 },
             )
             added_counts["same_event_as"] += 1
@@ -308,7 +317,8 @@ def _add_related_articles(
         related_article = db.get(Article, related_article_id)
         if related_article is None:
             continue
-        if _looks_like_same_source_duplicate(article, related_article):
+        score = float(item.get("score", 0.0))
+        if not articles_are_contextually_related(article, related_article, score, mode="vector"):
             continue
         related_node_id = _add_related_article_node(add_node, related_article, "qdrant_similarity")
         expand_related_article(related_article, related_node_id)
@@ -316,7 +326,7 @@ def _add_related_articles(
             base_article_node_id,
             related_node_id,
             "similar_to",
-            {"type": "similar_to", "score": item.get("score", 0.0)},
+            {"type": "similar_to", "score": score, "match_reason": item.get("match_reason")},
         )
         added_counts["similar_to"] += 1
         if added_counts["similar_to"] >= limit:
@@ -324,7 +334,7 @@ def _add_related_articles(
 
     for related_analysis, score in _similar_narrative_analyses(db, article, limit):
         related_article = related_analysis.article
-        if _looks_like_same_source_duplicate(article, related_article):
+        if not articles_are_contextually_related(article, related_article, score, mode="narrative"):
             continue
         related_node_id = _add_related_article_node(add_node, related_article, "narrative_similarity")
         expand_related_article(related_article, related_node_id)
@@ -332,7 +342,7 @@ def _add_related_articles(
             base_article_node_id,
             related_node_id,
             "shares_narrative",
-            {"type": "shares_narrative", "similarity": score},
+            {"type": "shares_narrative", "similarity": score, "match_reason": relation_debug_data(article, related_article, score)},
         )
 
 
@@ -460,6 +470,7 @@ def _article_density_data(article: Article) -> dict[str, Any]:
         "narrative_evidence_count": narrative_evidence_count,
         "entity_count": entity_count,
         "relation_count": relation_count,
+        "similarity_guard_version": SIMILARITY_GUARD_VERSION,
     }
 
 
@@ -469,17 +480,6 @@ def _article_display_label(article: Article) -> str:
     if article.language == "ru" or article.analysis is None:
         return article.title
     return article.analysis.short_summary or article.title
-
-
-def _looks_like_same_source_duplicate(base_article: Article, related_article: Article) -> bool:
-    """Не расширяет граф техническими дублями одной статьи с tracking URL."""
-
-    base_source = base_article.source.name if base_article.source else ""
-    related_source = related_article.source.name if related_article.source else ""
-    return (
-        base_source.strip().lower() == related_source.strip().lower()
-        and base_article.title.strip().lower() == related_article.title.strip().lower()
-    )
 
 
 def _similar_articles(db: Session, article_id: int, limit: int) -> list[dict[str, Any]]:
@@ -516,7 +516,7 @@ def _similar_narrative_analyses(db: Session, article: Article, limit: int) -> li
         for analysis in analyses:
             vector = [float(value) for value in model.encode(analysis.narrative_hypothesis, normalize_embeddings=True).tolist()]
             score = _cosine_similarity(base_vector, vector)
-            if score >= 0.75:
+            if score >= 0.78 and articles_are_contextually_related(article, analysis.article, score, mode="narrative"):
                 matches.append((analysis, score))
         matches.sort(key=lambda item: item[1], reverse=True)
         return matches[:limit]

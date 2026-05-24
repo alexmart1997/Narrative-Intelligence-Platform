@@ -83,7 +83,7 @@ def ingest_source_period(
 
         article = replace(article, url=adapter.canonical_url(article.url))
         parsed_articles += 1
-        if _article_exists(db, article.url):
+        if _article_exists(db, source.id, article):
             duplicates += 1
             continue
 
@@ -154,8 +154,12 @@ def query_articles(
         elif entity_name:
             statement = statement.join(Entity).where(Entity.name.ilike(f"%{entity_name}%"))
 
-    statement = statement.limit(limit).offset(offset)
-    return list(db.scalars(statement).all())
+    # В старых загрузках могли остаться технические дубли одной публикации:
+    # например, РБК отдает один материал как ?from=newsfeed и ?from=my_rbc.
+    # Сначала получаем подходящие статьи, затем схлопываем их по каноническому URL.
+    articles = list(db.scalars(statement).unique().all())
+    deduplicated = _deduplicate_articles(articles)
+    return deduplicated[offset : offset + limit]
 
 
 def _get_or_create_source(db: Session, adapter: NewsSourceAdapter) -> Source:
@@ -175,8 +179,44 @@ def _get_or_create_source(db: Session, adapter: NewsSourceAdapter) -> Source:
     return source
 
 
-def _article_exists(db: Session, url: str) -> bool:
-    return db.scalar(select(Article.id).where(Article.url == url)) is not None
+def _article_exists(db: Session, source_id: int, article: ParsedArticle) -> bool:
+    """Проверяет дубль с учетом tracking-параметров и старых уже сохраненных URL."""
+
+    canonical_url = NewsSourceAdapter.canonical_url(article.url)
+    same_title_articles = db.scalars(
+        select(Article).where(
+            Article.source_id == source_id,
+            Article.title == article.title,
+        )
+    )
+    for existing in same_title_articles:
+        if NewsSourceAdapter.canonical_url(existing.url) == canonical_url:
+            return True
+        if existing.published_at == article.published_at:
+            return True
+    return False
+
+
+def _deduplicate_articles(articles: list[Article]) -> list[Article]:
+    """Схлопывает технические копии одной статьи, сохраняя порядок выдачи."""
+
+    seen: set[tuple[int | None, str]] = set()
+    result: list[Article] = []
+    for article in articles:
+        key = _article_dedupe_key(article)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(article)
+    return result
+
+
+def _article_dedupe_key(article: Article) -> tuple[int | None, str]:
+    canonical_url = NewsSourceAdapter.canonical_url(article.url).lower().rstrip("/")
+    if canonical_url:
+        return article.source_id, canonical_url
+    fallback = f"{article.title.strip().lower()}:{article.published_at.isoformat()}"
+    return article.source_id, fallback
 
 
 def _save_article(db: Session, source: Source, article: ParsedArticle) -> Article:

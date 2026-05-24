@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.analysis import AnalysisError, parse_llm_json
+from app.article_similarity import SIMILARITY_GUARD_VERSION
 from app.llm import LlmError, call_llm
 from app.models import Article
 from app.vector import VectorError, find_similar_articles
@@ -15,7 +16,7 @@ class ComparisonError(Exception):
     """Ошибка сравнения двух статей."""
 
 
-COMPARISON_SIMILARITY_SCORE_THRESHOLD = 0.55
+COMPARISON_SIMILARITY_SCORE_THRESHOLD = 0.68
 
 
 def compare_articles(db: Session, article_id_1: int, article_id_2: int) -> dict[str, Any]:
@@ -60,6 +61,7 @@ def compare_with_similar(db: Session, article_id: int) -> list[dict[str, Any]]:
                 "article_id": similar_article_id,
                 "similarity_score": item.get("score", 0.0),
                 "comparison": comparison,
+                "guard_version": SIMILARITY_GUARD_VERSION,
             }
         )
     return comparisons

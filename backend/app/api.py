@@ -256,13 +256,13 @@ def embed_all_articles_endpoint(db: Session = Depends(get_db)) -> dict[str, int]
 def similar_articles_endpoint(
     article_id: int,
     limit: int = Query(default=10, ge=1, le=50),
-    min_score: float = Query(default=0.55, ge=0.0, le=1.0),
+    min_score: float = Query(default=0.68, ge=0.0, le=1.0),
     db: Session = Depends(get_db),
 ) -> SimilarArticlesResponse:
     """Ищет похожие статьи в Qdrant."""
 
     try:
-        if min_score == 0.55:
+        if min_score == 0.68:
             cached_items = get_cached_similar(db, article_id)
             if cached_items is not None:
                 return SimilarArticlesResponse(article_id=article_id, items=cached_items[:limit])

@@ -6,6 +6,12 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.article_similarity import (
+    SIMILARITY_GUARD_VERSION,
+    articles_are_contextually_related,
+    looks_like_same_source_duplicate,
+    relation_debug_data,
+)
 from app.config import settings
 from app.models import Article, ArticleAnalysis
 
@@ -14,7 +20,7 @@ class VectorError(Exception):
     """Ошибка векторизации или обращения к Qdrant."""
 
 
-DEFAULT_SIMILARITY_SCORE_THRESHOLD = 0.55
+DEFAULT_SIMILARITY_SCORE_THRESHOLD = 0.68
 
 
 @lru_cache(maxsize=1)
@@ -128,16 +134,28 @@ def find_similar_articles(
     items = []
     for result in results:
         payload = result.payload or {}
+        candidate_article_id = payload.get("article_id")
+        if not isinstance(candidate_article_id, int):
+            continue
+        candidate_article = db.get(Article, candidate_article_id)
+        if candidate_article is None:
+            continue
+        if looks_like_same_source_duplicate(article, candidate_article):
+            continue
+        if not articles_are_contextually_related(article, candidate_article, float(result.score), mode="vector"):
+            continue
+
+        debug_data = relation_debug_data(article, candidate_article, float(result.score))
         item = {
             "score": result.score,
-            "article_id": payload.get("article_id"),
+            "article_id": candidate_article_id,
             "title": payload.get("title", ""),
             "source_name": payload.get("source_name", ""),
             "published_at": payload.get("published_at", ""),
             "language": payload.get("language", ""),
+            "guard_version": SIMILARITY_GUARD_VERSION,
+            "match_reason": debug_data,
         }
-        if _looks_like_same_source_duplicate(article, item):
-            continue
         items.append(item)
         if len(items) >= limit:
             break
@@ -160,16 +178,6 @@ def build_embedding(article: Article, analysis: ArticleAnalysis) -> list[float]:
     model = get_embedding_model()
     vector = model.encode(text, normalize_embeddings=True)
     return [float(value) for value in vector.tolist()]
-
-
-def _looks_like_same_source_duplicate(article: Article, item: dict[str, Any]) -> bool:
-    """Скрывает копии одной публикации, пришедшие с разными tracking URL."""
-
-    source_name = article.source.name if article.source else ""
-    return (
-        source_name.strip().lower() == str(item.get("source_name", "")).strip().lower()
-        and article.title.strip().lower() == str(item.get("title", "")).strip().lower()
-    )
 
 
 def ensure_collection(vector_size: int) -> None:
