@@ -12,12 +12,14 @@ import {
   SourceInfo,
   analyzeArticle,
   detectArticleEvent,
+  discoverNarratives,
   embedArticle,
   getArticleAnalysis,
   getArticles,
   getNarratives,
   getSimilarArticles,
-  getSources
+  getSources,
+  precomputeIntelligence
 } from "@/lib/api";
 import styles from "./page.module.css";
 
@@ -29,6 +31,7 @@ type ActionState = {
 type ArticleAction = "analysis" | "analyze" | "compare" | "event" | "graph" | "similar";
 type DensityMode = "compact" | "comfortable" | "analyst";
 type StatusFilter = "" | "analyzed" | "not_analyzed";
+type GlobalAction = "discover_narratives" | "precompute" | null;
 
 type AnalysisMap = Record<number, ArticleAnalysisResponse | null>;
 
@@ -63,6 +66,7 @@ function ArticlesContent() {
   const [showPalette, setShowPalette] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [globalAction, setGlobalAction] = useState<GlobalAction>(null);
   const [actionState, setActionState] = useState<ActionState>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [noticeByArticle, setNoticeByArticle] = useState<Record<number, string>>({});
@@ -203,9 +207,40 @@ function ArticlesContent() {
     }
   }
 
-  function handleQuickAction(label: string) {
-    setActionMessage(`${label}: action placeholder. Use backend endpoint from API docs when ready.`);
-    setTimeout(() => setActionMessage(null), 2600);
+  async function handlePrecompute() {
+    setGlobalAction("precompute");
+    setError(null);
+    setActionMessage("Precomputing graph and similarity cache...");
+    try {
+      const result = await precomputeIntelligence({
+        dateFrom,
+        dateTo,
+        sourceCode,
+        language,
+        limit: 100
+      });
+      setActionMessage(`Precompute complete: ${result.cached_graphs} graphs, ${result.cached_similar} similarity caches.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Не удалось выполнить precompute");
+    } finally {
+      setGlobalAction(null);
+    }
+  }
+
+  async function handleDiscoverNarratives() {
+    setGlobalAction("discover_narratives");
+    setError(null);
+    setActionMessage("Discovering narratives across analyzed articles...");
+    try {
+      const result = await discoverNarratives();
+      setActionMessage(`Narrative discovery complete: ${result.created_narratives} narratives from ${result.total_analyses} analyses.`);
+      const narrativeList = await getNarratives().catch(() => [] as NarrativeListItem[]);
+      setNarratives(narrativeList);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Не удалось найти нарративы");
+    } finally {
+      setGlobalAction(null);
+    }
   }
 
   function resetFilters() {
@@ -233,9 +268,13 @@ function ArticlesContent() {
             <kbd>Cmd K</kbd>
           </button>
           <div className={styles.quickActions}>
-            {["Import", "Run Pipeline", "Discover Narratives", "Generate Report"].map((label) => (
-              <button key={label} onClick={() => handleQuickAction(label)}>{label}</button>
-            ))}
+            <button onClick={handlePrecompute} disabled={globalAction !== null}>
+              {globalAction === "precompute" ? "Precomputing..." : "Precompute Graphs"}
+            </button>
+            <button onClick={handleDiscoverNarratives} disabled={globalAction !== null}>
+              {globalAction === "discover_narratives" ? "Discovering..." : "Discover Narratives"}
+            </button>
+            <Link href="/narratives">Narratives</Link>
           </div>
         </div>
         <div className={styles.densitySwitch} aria-label="Density switch">
@@ -376,6 +415,7 @@ function ArticlesContent() {
                 onAnalyze={handleAnalyze}
                 onCompare={(id) => router.push(`/articles/${id}/compare`)}
                 onEvidence={(id) => router.push(`/articles/${id}/analysis`)}
+                onEvent={(eventId) => router.push(`/events/${eventId}`)}
                 onGraph={(id) => router.push(`/articles/${id}/graph`)}
                 onSimilar={handleFindSimilar}
                 similar={similarByArticle[article.id]}
@@ -460,6 +500,7 @@ function ArticleCard({
   onAnalyze,
   onCompare,
   onEvidence,
+  onEvent,
   onGraph,
   onSimilar,
   similar
@@ -471,6 +512,7 @@ function ArticleCard({
   onAnalyze: (articleId: number) => void;
   onCompare: (articleId: number) => void;
   onEvidence: (articleId: number) => void;
+  onEvent: (eventId: number) => void;
   onGraph: (articleId: number) => void;
   onSimilar: (articleId: number) => void;
   similar?: SimilarArticleItem[];
@@ -513,7 +555,7 @@ function ArticleCard({
         </button>
         <button onClick={() => onGraph(article.id)} disabled={busy}>Open 3D Graph</button>
         <button onClick={() => onCompare(article.id)} disabled={busy}>Compare</button>
-        <button disabled title="Article list API does not expose event_id yet">Event</button>
+        <button onClick={() => article.event_id && onEvent(article.event_id)} disabled={busy || !article.event_id}>Event</button>
         <button onClick={() => onEvidence(article.id)} disabled={busy || !article.has_analysis}>Evidence</button>
         <button onClick={() => onSimilar(article.id)} disabled={busy}>Similar</button>
       </div>

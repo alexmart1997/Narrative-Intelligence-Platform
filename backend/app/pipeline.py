@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.analysis import AnalysisError, analyze_article
-from app.events import EventDetectionError, detect_event_for_article
+from app.analysis import analyze_article
+from app.events import detect_event_for_article
 from app.models import Article, ArticleAnalysis, PipelineRun, Source
-from app.vector import VectorError, embed_article
+from app.vector import embed_article
 
 
 SUPPORTED_STEPS = {"analyze", "embed", "detect_event"}

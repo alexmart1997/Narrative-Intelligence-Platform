@@ -106,6 +106,7 @@
 }
 
 .quickActions button,
+.quickActions a,
 .densitySwitch button,
 .applyButton,
 .ghostButton,
@@ -126,12 +127,17 @@
 }
 
 .quickActions button,
+.quickActions a,
 .densitySwitch button {
+  display: inline-flex;
+  align-items: center;
   height: 34px;
   padding: 0 12px;
+  text-decoration: none;
 }
 
 .quickActions button:hover,
+.quickActions a:hover,
 .densitySwitch button:hover,
 .cardActions button:hover,
 .applyButton:hover,

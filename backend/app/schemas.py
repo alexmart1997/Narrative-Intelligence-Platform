@@ -50,6 +50,7 @@ class ArticleListItem(BaseModel):
     text_preview: str
     has_analysis: bool
     has_event: bool
+    event_id: Optional[int] = None
 
 
 class ArticleListResponse(BaseModel):

@@ -14,6 +14,7 @@ export type ArticleListItem = {
   text_preview: string;
   has_analysis: boolean;
   has_event: boolean;
+  event_id: number | null;
 };
 
 export type ArticleListResponse = {
@@ -153,6 +154,47 @@ export type NarrativeEvidenceItem = {
 
 export type NarrativeDetailResponse = Omit<NarrativeListItem, "evidence_count"> & {
   evidence: NarrativeEvidenceItem[];
+};
+
+export type EventDetailResponse = {
+  id: number;
+  title: string;
+  description: string;
+  event_date: string | null;
+  event_type: string | null;
+  location: string | null;
+  created_at: string;
+  articles: Array<{
+    article_id: number;
+    article_title: string;
+    source_name: string;
+    same_event_probability: number;
+    evidence_text: string | null;
+    published_at: string;
+  }>;
+  entities: Array<{
+    entity_id: number;
+    name: string;
+    type: string;
+    role: string | null;
+    importance_score: number | null;
+  }>;
+};
+
+export type NarrativeDiscoveryResponse = {
+  total_analyses: number;
+  clusters: number;
+  created_narratives: number;
+};
+
+export type PrecomputeResponse = {
+  selected_articles: number;
+  processed: number;
+  failed: number;
+  cached_graphs: number;
+  cached_similar: number;
+  cached_comparisons: number;
+  errors: Array<{ article_id?: number; error: string }>;
 };
 
 export type SourceProfileResponse = {
@@ -302,6 +344,37 @@ export async function getNarrative(narrativeId: number): Promise<NarrativeDetail
 
 export async function getNarrativeGraph(narrativeId: number): Promise<ArticleGraphResponse> {
   return request<ArticleGraphResponse>(`/graph/narrative/${narrativeId}`);
+}
+
+export async function discoverNarratives(): Promise<NarrativeDiscoveryResponse> {
+  return request<NarrativeDiscoveryResponse>("/narratives/discover", { method: "POST" });
+}
+
+export async function precomputeIntelligence(filters: {
+  dateFrom?: string;
+  dateTo?: string;
+  sourceCode?: string;
+  language?: string;
+  limit?: number;
+} = {}): Promise<PrecomputeResponse> {
+  return request<PrecomputeResponse>("/pipeline/precompute-intelligence", {
+    method: "POST",
+    body: JSON.stringify({
+      source_code: filters.sourceCode || null,
+      date_from: filters.dateFrom || null,
+      date_to: filters.dateTo || null,
+      language: filters.language || null,
+      only_with_analysis: true,
+      limit: filters.limit ?? 100,
+      limit_related: 30,
+      similar_limit: 10,
+      include_compare: false
+    })
+  });
+}
+
+export async function getEvent(eventId: number): Promise<EventDetailResponse> {
+  return request<EventDetailResponse>(`/events/${eventId}`);
 }
 
 export async function getSourceProfile(

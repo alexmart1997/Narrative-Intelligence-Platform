@@ -337,6 +337,10 @@ curl "http://localhost:8000/sources/rbc/profile"
 curl "http://localhost:8000/sources/rbc/profile?date_from=2026-05-01&date_to=2026-05-30&language=ru"
 ```
 
+## План развития
+
+Технический план доведения MVP до профессионального решения лежит в [docs/PROFESSIONALIZATION_PLAN.md](docs/PROFESSIONALIZATION_PLAN.md).
+
 Во frontend профиль доступен по адресу:
 
 ```text

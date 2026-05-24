@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-import json
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.api_responses import analysis_response, event_response, group_evidence, narrative_response
 from app.analysis import AnalysisError, analyze_article
 from app.comparison import ComparisonError, compare_articles, compare_with_similar
 from app.database import get_db
@@ -18,8 +18,9 @@ from app.events import (
     query_events,
 )
 from app.graph import GraphError, build_article_graph
-from app.ingestion.service import ingest_source_period, query_articles, supported_sources
+from app.http_errors import comparison_http_error, event_http_error, narrative_http_error, vector_http_error
 from app.config import settings
+from app.ingestion.service import ingest_source_period, query_articles, supported_sources
 from app.llm import LlmError, call_llm
 from app.models import AnalysisEvidence, ArticleAnalysis, Event, Narrative
 from app.narratives import NarrativeDiscoveryError, build_narrative_graph, discover_narratives
@@ -27,9 +28,7 @@ from app.pipeline import PipelineError, latest_pipeline_run, pipeline_run_to_dic
 from app.precompute import get_cached_compare, get_cached_graph, get_cached_similar, precompute_article_intelligence
 from app.source_profile import SourceProfileError, build_source_profile
 from app.schemas import (
-    AnalysisEntityItem,
     AnalysisEvidenceItem,
-    AnalysisRelationItem,
     ArticleGraphResponse,
     ArticleEmbedResponse,
     ArticleListItem,
@@ -45,13 +44,10 @@ from app.schemas import (
     LlmTestResponse,
     EventDetectAllResponse,
     EventDetectionResponse,
-    EventArticleItem,
     EventDetailResponse,
-    EventEntityItem,
     EventListItem,
     NarrativeDetailResponse,
     NarrativeDiscoveryResponse,
-    NarrativeEvidenceItem,
     NarrativeListItem,
     PipelineProcessRequest,
     PipelineProcessResponse,
@@ -147,6 +143,7 @@ def list_articles(
             text_preview=article.text[:500],
             has_analysis=article.analysis is not None,
             has_event=len(article.events) > 0,
+            event_id=article.events[0].event_id if article.events else None,
         )
         for article in articles
     ]
@@ -203,7 +200,7 @@ def analyze_article_endpoint(
             status_code = 503
         raise HTTPException(status_code=status_code, detail=message) from exc
 
-    return _analysis_response(analysis)
+    return analysis_response(analysis)
 
 
 @router.get("/articles/{article_id}/analysis", response_model=ArticleAnalysisResponse)
@@ -216,7 +213,7 @@ def get_article_analysis(
     analysis = db.query(ArticleAnalysis).filter(ArticleAnalysis.article_id == article_id).one_or_none()
     if analysis is None:
         raise HTTPException(status_code=404, detail="Анализ статьи не найден")
-    return _analysis_response(analysis)
+    return analysis_response(analysis)
 
 
 @router.get("/articles/{article_id}/evidence", response_model=dict[str, list[AnalysisEvidenceItem]])
@@ -232,7 +229,7 @@ def get_article_evidence(
         .order_by(AnalysisEvidence.evidence_type, AnalysisEvidence.created_at)
         .all()
     )
-    return _group_evidence(evidence_items)
+    return group_evidence(evidence_items)
 
 
 @router.post("/articles/{article_id}/embed", response_model=ArticleEmbedResponse)
@@ -245,7 +242,7 @@ def embed_article_endpoint(
     try:
         return embed_article(db, article_id)
     except VectorError as exc:
-        raise _vector_http_error(exc) from exc
+        raise vector_http_error(exc) from exc
 
 
 @router.post("/articles/embed-all", response_model=EmbedAllResponse)
@@ -271,7 +268,7 @@ def similar_articles_endpoint(
                 return SimilarArticlesResponse(article_id=article_id, items=cached_items[:limit])
         items = find_similar_articles(db, article_id=article_id, limit=limit, min_score=min_score)
     except VectorError as exc:
-        raise _vector_http_error(exc) from exc
+        raise vector_http_error(exc) from exc
     return SimilarArticlesResponse(article_id=article_id, items=items)
 
 
@@ -285,7 +282,7 @@ def compare_articles_endpoint(
     try:
         return compare_articles(db, payload.article_id_1, payload.article_id_2)
     except ComparisonError as exc:
-        raise _comparison_http_error(exc) from exc
+        raise comparison_http_error(exc) from exc
 
 
 @router.get("/articles/{article_id}/compare-with-similar", response_model=CompareWithSimilarResponse)
@@ -301,7 +298,7 @@ def compare_with_similar_endpoint(
             return CompareWithSimilarResponse(article_id=article_id, items=cached_items)
         items = compare_with_similar(db, article_id)
     except ComparisonError as exc:
-        raise _comparison_http_error(exc) from exc
+        raise comparison_http_error(exc) from exc
     return CompareWithSimilarResponse(article_id=article_id, items=items)
 
 
@@ -353,7 +350,7 @@ def detect_article_event_endpoint(
     try:
         event = detect_event_for_article(db, article_id)
     except EventDetectionError as exc:
-        raise _event_http_error(exc) from exc
+        raise event_http_error(exc) from exc
     return EventDetectionResponse(event_id=event.id, title=event.title, article_id=article_id)
 
 
@@ -400,7 +397,7 @@ def get_event(
     event = db.get(Event, event_id)
     if event is None:
         raise HTTPException(status_code=404, detail="Событие не найдено")
-    return _event_response(event)
+    return event_response(event)
 
 
 @router.get("/graph/event/{event_id}", response_model=ArticleGraphResponse)
@@ -413,7 +410,7 @@ def event_graph_endpoint(
     try:
         return build_event_graph(db, event_id)
     except EventDetectionError as exc:
-        raise _event_http_error(exc) from exc
+        raise event_http_error(exc) from exc
 
 
 @router.post("/pipeline/process-articles", response_model=PipelineProcessResponse)
@@ -446,7 +443,7 @@ def discover_narratives_endpoint(db: Session = Depends(get_db)) -> dict[str, int
     try:
         return discover_narratives(db)
     except NarrativeDiscoveryError as exc:
-        raise _narrative_http_error(exc) from exc
+        raise narrative_http_error(exc) from exc
 
 
 @router.get("/narratives", response_model=list[NarrativeListItem])
@@ -477,7 +474,7 @@ def get_narrative(
     narrative = db.get(Narrative, narrative_id)
     if narrative is None:
         raise HTTPException(status_code=404, detail="Нарратив не найден")
-    return _narrative_response(narrative)
+    return narrative_response(narrative)
 
 
 @router.get("/graph/narrative/{narrative_id}", response_model=ArticleGraphResponse)
@@ -490,177 +487,4 @@ def narrative_graph_endpoint(
     try:
         return build_narrative_graph(db, narrative_id)
     except NarrativeDiscoveryError as exc:
-        raise _narrative_http_error(exc) from exc
-
-
-def _analysis_response(analysis: ArticleAnalysis) -> ArticleAnalysisResponse:
-    """Преобразует ORM-модель анализа в API-ответ."""
-
-    entities = [
-        AnalysisEntityItem(
-            id=item.entity.id,
-            name=item.entity.name,
-            type=item.entity.type.value,
-            role=item.role,
-            importance_score=item.importance_score,
-        )
-        for item in analysis.article.entities
-    ]
-    relations = [
-        AnalysisRelationItem(
-            id=relation.id,
-            source=relation.source_entity.name,
-            target=relation.target_entity.name,
-            relation_type=relation.relation_type,
-            description=relation.description,
-            confidence=relation.confidence,
-        )
-        for relation in analysis.article.relations
-    ]
-
-    return ArticleAnalysisResponse(
-        id=analysis.id,
-        article_id=analysis.article_id,
-        short_summary=analysis.short_summary,
-        detailed_summary=analysis.detailed_summary,
-        sentiment=analysis.sentiment.value,
-        stance=analysis.stance,
-        framing=analysis.framing,
-        sympathizes_with=_json_list(analysis.sympathizes_with),
-        criticizes=_json_list(analysis.criticizes),
-        narrative_hypothesis=analysis.narrative_hypothesis,
-        confidence=analysis.confidence,
-        entities=entities,
-        relations=relations,
-        evidence=_group_evidence(analysis.evidence),
-    )
-
-
-def _group_evidence(evidence_items: list[AnalysisEvidence]) -> dict[str, list[AnalysisEvidenceItem]]:
-    """Группирует evidence по evidence_type для удобного отображения в UI."""
-
-    grouped: dict[str, list[AnalysisEvidenceItem]] = {}
-    for item in evidence_items:
-        grouped.setdefault(item.evidence_type, []).append(
-            AnalysisEvidenceItem(
-                id=item.id,
-                article_id=item.article_id,
-                analysis_id=item.analysis_id,
-                evidence_type=item.evidence_type,
-                target=item.target,
-                quote=item.quote,
-                explanation=item.explanation,
-                confidence=item.confidence,
-                created_at=item.created_at,
-            )
-        )
-    return grouped
-
-
-def _narrative_response(narrative: Narrative) -> NarrativeDetailResponse:
-    """Преобразует ORM-модель нарратива в API-ответ."""
-
-    return NarrativeDetailResponse(
-        id=narrative.id,
-        title=narrative.title,
-        description=narrative.description,
-        frame=narrative.frame,
-        created_at=narrative.created_at,
-        evidence=[
-            NarrativeEvidenceItem(
-                article_id=evidence.article_id,
-                article_title=evidence.article.title,
-                source_name=evidence.article.source.name if evidence.article.source else "unknown",
-                evidence_text=evidence.evidence_text,
-                confidence=evidence.confidence,
-            )
-            for evidence in narrative.evidence
-        ],
-    )
-
-
-def _event_response(event: Event) -> EventDetailResponse:
-    """Преобразует ORM-модель события в API-ответ."""
-
-    return EventDetailResponse(
-        id=event.id,
-        title=event.title,
-        description=event.description,
-        event_date=event.event_date,
-        event_type=event.event_type,
-        location=event.location,
-        created_at=event.created_at,
-        articles=[
-            EventArticleItem(
-                article_id=link.article_id,
-                article_title=link.article.title,
-                source_name=link.article.source.name if link.article.source else "unknown",
-                same_event_probability=link.same_event_probability,
-                evidence_text=link.evidence_text,
-                published_at=link.article.published_at,
-            )
-            for link in event.articles
-        ],
-        entities=[
-            EventEntityItem(
-                entity_id=item.entity_id,
-                name=item.entity.name,
-                type=item.entity.type.value,
-                role=item.role,
-                importance_score=item.importance_score,
-            )
-            for item in event.entities
-        ],
-    )
-
-
-def _json_list(value: str | None) -> list[str]:
-    if not value:
-        return []
-    try:
-        data = json.loads(value)
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(data, list):
-        return []
-    return [item for item in data if isinstance(item, str)]
-
-
-def _vector_http_error(exc: VectorError) -> HTTPException:
-    message = str(exc)
-    if message == "Статья не найдена":
-        return HTTPException(status_code=404, detail=message)
-    if "Сначала нужно выполнить" in message:
-        return HTTPException(status_code=400, detail=message)
-    return HTTPException(status_code=503, detail=message)
-
-
-def _comparison_http_error(exc: ComparisonError) -> HTTPException:
-    message = str(exc)
-    if "не найдена" in message:
-        return HTTPException(status_code=404, detail=message)
-    if "сначала нужно выполнить" in message:
-        return HTTPException(status_code=400, detail=message)
-    if "Ollama" in message or "Qdrant" in message:
-        return HTTPException(status_code=503, detail=message)
-    return HTTPException(status_code=422, detail=message)
-
-
-def _narrative_http_error(exc: NarrativeDiscoveryError) -> HTTPException:
-    message = str(exc)
-    if "не найден" in message:
-        return HTTPException(status_code=404, detail=message)
-    if "Ollama" in message:
-        return HTTPException(status_code=503, detail=message)
-    return HTTPException(status_code=422, detail=message)
-
-
-def _event_http_error(exc: EventDetectionError) -> HTTPException:
-    message = str(exc)
-    if "не найден" in message:
-        return HTTPException(status_code=404, detail=message)
-    if "Сначала нужно" in message:
-        return HTTPException(status_code=400, detail=message)
-    if "Ollama" in message or "Qdrant" in message:
-        return HTTPException(status_code=503, detail=message)
-    return HTTPException(status_code=422, detail=message)
+        raise narrative_http_error(exc) from exc

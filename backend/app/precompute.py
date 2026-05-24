@@ -14,10 +14,6 @@ from app.models import Article, ArticleAnalysis, ArticlePrecomputeCache, Source
 from app.vector import embed_article, find_similar_articles
 
 
-class PrecomputeError(Exception):
-    """Ошибка настройки precompute pipeline."""
-
-
 def precompute_article_intelligence(db: Session, params: dict[str, Any]) -> dict[str, Any]:
     """Заранее считает быстрые данные для UI: embeddings, события, similar и graph cache."""
 
