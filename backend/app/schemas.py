@@ -315,6 +315,28 @@ class PipelineRunResponse(BaseModel):
     result: Optional[PipelineProcessResponse]
 
 
+class PrecomputeRequest(BaseModel):
+    source_code: Optional[str] = None
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+    language: Optional[str] = None
+    only_with_analysis: bool = True
+    limit: int = Field(default=100, ge=1, le=500)
+    limit_related: int = Field(default=30, ge=1, le=50)
+    similar_limit: int = Field(default=10, ge=1, le=50)
+    include_compare: bool = False
+
+
+class PrecomputeResponse(BaseModel):
+    selected_articles: int
+    processed: int
+    failed: int
+    cached_graphs: int
+    cached_similar: int
+    cached_comparisons: int
+    errors: list[dict]
+
+
 class SourceProfileSource(BaseModel):
     id: int
     code: Optional[str]

@@ -54,6 +54,7 @@ def embed_article(db: Session, article_id: int) -> dict[str, Any]:
     payload = {
         "article_id": article.id,
         "title": article.title,
+        "url": article.url,
         "source_name": article.source.name if article.source else "",
         "published_at": article.published_at.isoformat(),
         "language": article.language,
@@ -117,23 +118,30 @@ def find_similar_articles(
                     FieldCondition(key="article_id", match=MatchValue(value=article_id)),
                 ],
             ),
-            limit=limit,
+            # Берем с запасом: ниже можем отфильтровать технические дубли одного материала.
+            limit=min(max(limit * 5, limit + 10), 100),
             with_payload=True,
         )
     except Exception as exc:
         raise VectorError(f"Не удалось выполнить поиск в Qdrant: {exc}") from exc
 
-    items = [
-        {
+    items = []
+    for result in results:
+        payload = result.payload or {}
+        item = {
             "score": result.score,
-            "article_id": result.payload.get("article_id") if result.payload else None,
-            "title": result.payload.get("title") if result.payload else "",
-            "source_name": result.payload.get("source_name") if result.payload else "",
-            "published_at": result.payload.get("published_at") if result.payload else "",
-            "language": result.payload.get("language") if result.payload else "",
+            "article_id": payload.get("article_id"),
+            "title": payload.get("title", ""),
+            "source_name": payload.get("source_name", ""),
+            "published_at": payload.get("published_at", ""),
+            "language": payload.get("language", ""),
         }
-        for result in results
-    ]
+        if _looks_like_same_source_duplicate(article, item):
+            continue
+        items.append(item)
+        if len(items) >= limit:
+            break
+
     # Qdrant всегда возвращает ближайшие точки, даже если реальной смысловой
     # близости почти нет. Для аналитического UI низкие score лучше скрывать.
     return [item for item in items if float(item["score"]) >= min_score]
@@ -152,6 +160,16 @@ def build_embedding(article: Article, analysis: ArticleAnalysis) -> list[float]:
     model = get_embedding_model()
     vector = model.encode(text, normalize_embeddings=True)
     return [float(value) for value in vector.tolist()]
+
+
+def _looks_like_same_source_duplicate(article: Article, item: dict[str, Any]) -> bool:
+    """Скрывает копии одной публикации, пришедшие с разными tracking URL."""
+
+    source_name = article.source.name if article.source else ""
+    return (
+        source_name.strip().lower() == str(item.get("source_name", "")).strip().lower()
+        and article.title.strip().lower() == str(item.get("title", "")).strip().lower()
+    )
 
 
 def ensure_collection(vector_size: int) -> None:

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 import httpx
 from bs4 import BeautifulSoup
@@ -102,6 +102,19 @@ class NewsSourceAdapter(ABC):
         return urljoin(self.base_url, url)
 
     @staticmethod
+    def canonical_url(url: str) -> str:
+        """Убирает якоря и tracking-параметры, чтобы не сохранять одну статью дублями."""
+
+        parts = urlsplit(url)
+        allowed_query = []
+        for key, value in parse_qsl(parts.query, keep_blank_values=True):
+            lowered = key.lower()
+            if lowered == "from" or lowered.startswith("utm_"):
+                continue
+            allowed_query.append((key, value))
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(allowed_query), ""))
+
+    @staticmethod
     def clean_text(value: str | None) -> str:
         """Убирает лишние пробелы и переносы строк."""
 
@@ -162,7 +175,7 @@ class NewsSourceAdapter(ABC):
         seen: set[str] = set()
         result: list[str] = []
         for link in links:
-            normalized = link.split("#")[0]
+            normalized = NewsSourceAdapter.canonical_url(link)
             if normalized in seen:
                 continue
             seen.add(normalized)

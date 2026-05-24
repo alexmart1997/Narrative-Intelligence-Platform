@@ -283,6 +283,8 @@ def _add_related_articles(
             if related_link.article_id == article.id or added_counts["same_event_as"] >= limit:
                 continue
             related_article = related_link.article
+            if _looks_like_same_source_duplicate(article, related_article):
+                continue
             related_node_id = _add_related_article_node(add_node, related_article, "same_event")
             expand_related_article(related_article, related_node_id)
             add_edge(
@@ -304,6 +306,8 @@ def _add_related_articles(
         related_article = db.get(Article, related_article_id)
         if related_article is None:
             continue
+        if _looks_like_same_source_duplicate(article, related_article):
+            continue
         related_node_id = _add_related_article_node(add_node, related_article, "qdrant_similarity")
         expand_related_article(related_article, related_node_id)
         add_edge(
@@ -318,6 +322,8 @@ def _add_related_articles(
 
     for related_analysis, score in _similar_narrative_analyses(db, article, limit):
         related_article = related_analysis.article
+        if _looks_like_same_source_duplicate(article, related_article):
+            continue
         related_node_id = _add_related_article_node(add_node, related_article, "narrative_similarity")
         expand_related_article(related_article, related_node_id)
         add_edge(
@@ -338,6 +344,7 @@ def _add_related_article_node(add_node: Any, article: Article, relation_hint: st
             "article_id": article.id,
             "source_name": article.source.name if article.source else "unknown",
             "published_at": article.published_at.isoformat(),
+            "language": article.language,
             "relation_hint": relation_hint,
             **_article_density_data(article),
         },
@@ -451,6 +458,17 @@ def _article_density_data(article: Article) -> dict[str, Any]:
         "entity_count": entity_count,
         "relation_count": relation_count,
     }
+
+
+def _looks_like_same_source_duplicate(base_article: Article, related_article: Article) -> bool:
+    """Не расширяет граф техническими дублями одной статьи с tracking URL."""
+
+    base_source = base_article.source.name if base_article.source else ""
+    related_source = related_article.source.name if related_article.source else ""
+    return (
+        base_source.strip().lower() == related_source.strip().lower()
+        and base_article.title.strip().lower() == related_article.title.strip().lower()
+    )
 
 
 def _similar_articles(db: Session, article_id: int, limit: int) -> list[dict[str, Any]]:

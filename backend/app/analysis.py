@@ -54,7 +54,9 @@ def analyze_article(db: Session, article_id: int) -> ArticleAnalysis:
 def build_analysis_prompt(article: Article) -> str:
     """Готовит русский prompt для политического анализа новости."""
 
-    text = article.text[:12000]
+    # Для локального batch на MacBook держим prompt компактным:
+    # длинные статьи резко замедляют Ollama и блокируют массовую обработку.
+    text = article.text[:5000]
     return f"""
 Ты аналитик политических новостей. Проанализируй статью и верни СТРОГО один JSON без markdown, комментариев и текста вокруг.
 
@@ -110,6 +112,12 @@ def build_analysis_prompt(article: Article) -> str:
 - sentiment выбери только из: positive, negative, neutral, mixed.
 - type выбери только из: person, organization, country, location, concept, other.
 - confidence и importance_score должны быть числами от 0 до 1.
+- short_summary: максимум 2 предложения.
+- detailed_summary: максимум 5 предложений.
+- stance, framing, narrative_hypothesis: по одному компактному абзацу.
+- entities: максимум 12 главных сущностей.
+- relations: максимум 8 главных связей.
+- evidence: максимум 8 самых важных фрагментов.
 - evidence_type выбери только из: sentiment, stance, framing, sympathy, criticism, narrative, entity_role, relation.
 - quote должен быть коротким, до 300 символов, и дословно взят из текста статьи.
 - Для framing, sympathy, criticism и narrative обязательно добавь evidence, если в тексте есть явный фрагмент.

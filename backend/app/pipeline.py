@@ -70,6 +70,12 @@ def process_articles_pipeline(
         else:
             result["processed"] += 1
 
+        # Обновляем статус после каждой статьи, чтобы UI/пользователь видел живой прогресс.
+        run.processed = result["processed"]
+        run.failed = result["failed"]
+        run.result_json = json.dumps(result, ensure_ascii=False, default=str)
+        db.commit()
+
     run.status = "completed" if result["failed"] == 0 else "completed_with_errors"
     run.finished_at = datetime.now(timezone.utc)
     run.selected_articles = result["selected_articles"]

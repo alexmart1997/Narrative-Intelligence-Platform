@@ -19,7 +19,8 @@ def call_llm(prompt: str) -> str:
         "format": "json",
         "options": {
             "temperature": 0.1,
-            "num_predict": 1500,
+            # Prompt компактный, но JSON с evidence должен успевать завершиться.
+            "num_predict": 2400,
         },
     }
 

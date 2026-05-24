@@ -24,6 +24,7 @@ from app.llm import LlmError, call_llm
 from app.models import AnalysisEvidence, ArticleAnalysis, Event, Narrative
 from app.narratives import NarrativeDiscoveryError, build_narrative_graph, discover_narratives
 from app.pipeline import PipelineError, latest_pipeline_run, pipeline_run_to_dict, process_articles_pipeline
+from app.precompute import get_cached_compare, get_cached_graph, get_cached_similar, precompute_article_intelligence
 from app.source_profile import SourceProfileError, build_source_profile
 from app.schemas import (
     AnalysisEntityItem,
@@ -55,6 +56,8 @@ from app.schemas import (
     PipelineProcessRequest,
     PipelineProcessResponse,
     PipelineRunResponse,
+    PrecomputeRequest,
+    PrecomputeResponse,
     SimilarArticlesResponse,
     SourceProfileResponse,
     SourceInfo,
@@ -262,6 +265,10 @@ def similar_articles_endpoint(
     """Ищет похожие статьи в Qdrant."""
 
     try:
+        if min_score == 0.55:
+            cached_items = get_cached_similar(db, article_id)
+            if cached_items is not None:
+                return SimilarArticlesResponse(article_id=article_id, items=cached_items[:limit])
         items = find_similar_articles(db, article_id=article_id, limit=limit, min_score=min_score)
     except VectorError as exc:
         raise _vector_http_error(exc) from exc
@@ -289,6 +296,9 @@ def compare_with_similar_endpoint(
     """Сравнивает статью с top-3 похожими материалами из Qdrant."""
 
     try:
+        cached_items = get_cached_compare(db, article_id)
+        if cached_items is not None:
+            return CompareWithSimilarResponse(article_id=article_id, items=cached_items)
         items = compare_with_similar(db, article_id)
     except ComparisonError as exc:
         raise _comparison_http_error(exc) from exc
@@ -306,6 +316,10 @@ def article_graph_endpoint(
     """Возвращает граф статьи, источника, сущностей, отношений и нарратива."""
 
     try:
+        if include_related and focus_entity_id is None:
+            cached_graph = get_cached_graph(db, article_id)
+            if cached_graph is not None:
+                return cached_graph
         return build_article_graph(
             db,
             article_id,
@@ -317,6 +331,16 @@ def article_graph_endpoint(
         message = str(exc)
         status_code = 404 if message == "Статья не найдена" else 400
         raise HTTPException(status_code=status_code, detail=message) from exc
+
+
+@router.post("/pipeline/precompute-intelligence", response_model=PrecomputeResponse)
+def precompute_intelligence_endpoint(
+    payload: PrecomputeRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Заранее считает graph/similar/compare cache для быстрого UI."""
+
+    return precompute_article_intelligence(db, payload.model_dump())
 
 
 @router.post("/articles/{article_id}/detect-event", response_model=EventDetectionResponse)

@@ -61,6 +61,28 @@ class PipelineRun(Base):
     result_json: Mapped[Optional[str]] = mapped_column(Text)
 
 
+class ArticlePrecomputeCache(Base):
+    """Кэш заранее рассчитанных данных для быстрого UI без ожидания онлайн-вычислений."""
+
+    __tablename__ = "article_precompute_cache"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id", ondelete="CASCADE"), unique=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="ready", server_default="ready")
+    graph_json: Mapped[Optional[str]] = mapped_column(Text)
+    similar_json: Mapped[Optional[str]] = mapped_column(Text)
+    compare_json: Mapped[Optional[str]] = mapped_column(Text)
+    error: Mapped[Optional[str]] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    article: Mapped["Article"] = relationship()
+
+
 class Source(Base):
     """Источник публикаций: СМИ, сайт, канал или другой поставщик текстов."""
 

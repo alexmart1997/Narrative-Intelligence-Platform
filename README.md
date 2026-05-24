@@ -297,6 +297,24 @@ curl -X POST http://localhost:8000/pipeline/process-articles \
 curl http://localhost:8000/pipeline/status
 ```
 
+Заранее простроить быстрые данные для UI, чтобы графы и похожие статьи открывались без долгого ожидания:
+
+```bash
+curl -X POST http://localhost:8000/pipeline/precompute-intelligence \
+  -H "Content-Type: application/json" \
+  -d '{
+    "date_from": "2026-04-24",
+    "date_to": "2026-05-24",
+    "only_with_analysis": true,
+    "limit": 100,
+    "limit_related": 30,
+    "similar_limit": 10,
+    "include_compare": false
+  }'
+```
+
+`include_compare=true` заранее считает также LLM-сравнения с похожими статьями, но это медленнее, потому что вызывает Ollama.
+
 Проверить результаты:
 
 ```bash

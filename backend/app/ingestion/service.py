@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 
 from sqlalchemy import or_, select
@@ -80,6 +81,7 @@ def ingest_source_period(
         if not date_from <= article.published_at.date() <= date_to:
             continue
 
+        article = replace(article, url=adapter.canonical_url(article.url))
         parsed_articles += 1
         if _article_exists(db, article.url):
             duplicates += 1
