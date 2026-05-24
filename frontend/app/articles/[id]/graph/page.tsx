@@ -62,7 +62,7 @@ const defaultFilters: VisualFilters = {
   showNarratives: true,
   showWeakEdges: false,
   confidenceThreshold: 0,
-  labelDensity: 0.24
+  labelDensity: 0.52
 };
 
 const entityNodeTypes = new Set(["person", "organization", "country", "location", "concept"]);
@@ -146,6 +146,23 @@ export default function ArticleGraphPage() {
     if (!graph) return 0;
     return graph.nodes.filter((node) => node.type === "article" && node.id !== `article_${activeArticleId}`).length;
   }, [activeArticleId, graph]);
+
+  const narrativeSignals = useMemo(() => {
+    if (!graph) return [];
+    return graph.nodes
+      .filter((node) => node.type === "narrative")
+      .map((node) => ({
+        id: node.id,
+        title: graphNodeLabel(node),
+        confidence: nodeConfidence(node),
+        evidenceCount: Number(node.data.narrative_evidence_count ?? node.data.evidence_count ?? 0),
+      }))
+      .sort((left, right) => {
+        const evidenceDelta = right.evidenceCount - left.evidenceCount;
+        return evidenceDelta !== 0 ? evidenceDelta : right.confidence - left.confidence;
+      })
+      .slice(0, 5);
+  }, [graph]);
 
   useEffect(() => {
     setActiveArticleId(initialArticleId);
@@ -387,6 +404,7 @@ export default function ArticleGraphPage() {
 
         <aside className={styles.detailPanel}>
           <h2>Детали</h2>
+          <NarrativeSignals signals={narrativeSignals} />
           <div className={styles.readingGuide}>
             <strong>Как читать сцену</strong>
             <p>Шарик = объект анализа: статья, источник, участник или нарратив.</p>
@@ -437,7 +455,7 @@ function createThreeGraphScene({
   const nodeById = new Map(sceneNodes.map((node) => [node.id, node]));
   const neighborMap = buildNeighborMap(visibleGraph.edges);
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2("#030405", 0.0019);
+  scene.fog = new THREE.FogExp2("#030405", 0.0022);
 
   const width = Math.max(container.clientWidth, 640);
   const height = Math.max(container.clientHeight, 480);
@@ -449,12 +467,12 @@ function createThreeGraphScene({
   renderer.setSize(width, height);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.2;
+  renderer.toneMappingExposure = 0.86;
   container.replaceChildren(renderer.domElement);
 
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.62, 0.72, 0.1);
+  const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.3, 0.54, 0.22);
   composer.addPass(bloomPass);
   composer.addPass(new OutputPass());
 
@@ -474,11 +492,11 @@ function createThreeGraphScene({
   controls.autoRotateSpeed = 0.8;
   controls.target.set(0, 0, 0);
 
-  scene.add(new THREE.AmbientLight("#7dd3fc", 0.7));
-  const keyLight = new THREE.PointLight("#38bdf8", 3.4, 1200);
+  scene.add(new THREE.AmbientLight("#7dd3fc", 0.42));
+  const keyLight = new THREE.PointLight("#38bdf8", 1.75, 1200);
   keyLight.position.set(-220, 260, 300);
   scene.add(keyLight);
-  const warmLight = new THREE.PointLight("#fb923c", 2.4, 900);
+  const warmLight = new THREE.PointLight("#fb923c", 1.1, 900);
   warmLight.position.set(260, -180, 260);
   scene.add(warmLight);
 
@@ -814,11 +832,11 @@ function createNodeMesh(node: SceneNode, focused: boolean, selected: boolean) {
   const material = new THREE.MeshStandardMaterial({
     color: node.color,
     emissive: node.color,
-    emissiveIntensity: focused || selected ? 1.95 : node.type === "article" ? 1.15 : 0.72,
+    emissiveIntensity: focused || selected ? 1.05 : node.type === "article" ? 0.52 : 0.34,
     metalness: 0.15,
-    roughness: 0.22,
+    roughness: 0.32,
     transparent: true,
-    opacity: Math.max(0.38, Math.min(1, node.confidence)),
+    opacity: Math.max(0.42, Math.min(0.9, node.confidence)),
   });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.copy(node.position);
@@ -827,7 +845,7 @@ function createNodeMesh(node: SceneNode, focused: boolean, selected: boolean) {
   const glowMaterial = new THREE.MeshBasicMaterial({
     color: node.color,
     transparent: true,
-    opacity: focused || selected ? 0.16 : 0.06,
+    opacity: focused || selected ? 0.08 : 0.022,
     blending: THREE.AdditiveBlending,
     depthWrite: false
   });
@@ -840,7 +858,7 @@ function createNodeMesh(node: SceneNode, focused: boolean, selected: boolean) {
       new THREE.MeshBasicMaterial({
         color: selected ? "#fbbf24" : "#38bdf8",
         transparent: true,
-        opacity: selected ? 0.9 : 0.46,
+        opacity: selected ? 0.58 : 0.24,
         blending: THREE.AdditiveBlending,
         depthWrite: false
       })
@@ -855,7 +873,7 @@ function createEdgeObject(source: SceneNode, target: SceneNode, edge: GraphEdge)
   const curve = edgeCurve(source, target);
   const color = edgePalette[edge.label] ?? "#7dd3fc";
   const strength = edgeStrength(edge);
-  const opacity = Math.max(0.16, Math.min(0.95, strength));
+  const opacity = Math.max(0.1, Math.min(0.62, strength * 0.72));
   if (routeEdgeTypes.has(edge.label)) {
     const group = new THREE.Group();
     group.userData.edgeId = edge.id;
@@ -863,7 +881,7 @@ function createEdgeObject(source: SceneNode, target: SceneNode, edge: GraphEdge)
     const material = new THREE.MeshBasicMaterial({
       color,
       transparent: true,
-      opacity: Math.max(0.48, opacity),
+      opacity: Math.max(0.24, opacity),
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
@@ -879,7 +897,7 @@ function createEdgeObject(source: SceneNode, target: SceneNode, edge: GraphEdge)
         new THREE.MeshBasicMaterial({
           color: index % 2 === 0 ? "#f97316" : color,
           transparent: true,
-          opacity,
+          opacity: Math.max(0.2, opacity * 0.82),
           blending: THREE.AdditiveBlending,
           depthWrite: false
         })
@@ -896,7 +914,7 @@ function createEdgeObject(source: SceneNode, target: SceneNode, edge: GraphEdge)
   const material = new THREE.LineBasicMaterial({
     color,
     transparent: true,
-    opacity: Math.max(0.18, opacity * 0.48),
+    opacity: Math.max(0.1, opacity * 0.48),
     blending: THREE.AdditiveBlending
   });
   return new THREE.Line(geometry, material);
@@ -921,7 +939,7 @@ function createFlowParticles(source: SceneNode, target: SceneNode, edge: GraphEd
       new THREE.MeshBasicMaterial({
         color,
         transparent: true,
-        opacity: 0.72,
+        opacity: 0.42,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       }),
@@ -981,7 +999,7 @@ function applyHoverState(
       if (object instanceof THREE.Mesh || object instanceof THREE.Line) {
         const material = object.material;
         if (!Array.isArray(material)) {
-          material.opacity = active ? Math.max(0.24, edgeStrength(item.edge)) : 0.06;
+          material.opacity = active ? Math.max(0.16, Math.min(0.52, edgeStrength(item.edge) * 0.68)) : 0.04;
           material.needsUpdate = true;
         }
       }
@@ -1014,7 +1032,7 @@ function edgeStrength(edge: GraphEdge) {
 }
 
 function addStarField(scene: THREE.Scene) {
-  const count = 900;
+  const count = 640;
   const positions = new Float32Array(count * 3);
   for (let index = 0; index < count; index += 1) {
     positions[index * 3] = (Math.random() - 0.5) * 1600;
@@ -1025,8 +1043,8 @@ function addStarField(scene: THREE.Scene) {
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   const material = new THREE.PointsMaterial({
     color: "#38bdf8",
-    opacity: 0.32,
-    size: 1.5,
+    opacity: 0.17,
+    size: 1.25,
     transparent: true,
     blending: THREE.AdditiveBlending,
     depthWrite: false
@@ -1069,31 +1087,84 @@ function updateHtmlLabels(
 ) {
   const width = renderer.domElement.clientWidth;
   const height = renderer.domElement.clientHeight;
-  for (const item of labels) {
-    const vector = item.node.position.clone();
-    vector.y += item.node.size + 22;
-    vector.project(camera);
-    const visible = vector.z < 1;
-    const x = (vector.x * 0.5 + 0.5) * width;
-    const y = (-vector.y * 0.5 + 0.5) * height;
-    const distance = camera.position.distanceTo(item.node.position);
-    const zoomFactor = distance < 420 ? 0.35 : distance < 720 ? 0.18 : 0;
-    const densityGate = labelDensity + zoomFactor;
-    const labelThreshold = 1.22 + (1 - labelDensity) * 0.58;
-    const primaryArticle = item.node.type === "article" && item.node.id.startsWith("article_");
-    const relatedArticleLabel = item.node.type === "article" && (distance < 430 || labelDensity > 0.65);
-    const important = primaryArticle
-      || relatedArticleLabel
-      || item.node.id === hoveredNodeId
-      || item.node.id === selectedNodeId
-      || (distance < 460 && ["source", "narrative"].includes(item.node.type))
-      || (distance < 520 && item.node.weight >= labelThreshold)
-      || labels.length <= 18
-      || Boolean(item.node.data.is_focus);
+  const candidates = labels
+    .map((item) => {
+      const vector = item.node.position.clone();
+      vector.y += item.node.size + 22;
+      vector.project(camera);
+      const x = (vector.x * 0.5 + 0.5) * width;
+      const y = (-vector.y * 0.5 + 0.5) * height;
+      const distance = camera.position.distanceTo(item.node.position);
+      const zoomFactor = distance < 420 ? 0.36 : distance < 720 ? 0.2 : 0.06;
+      const required = item.node.id === hoveredNodeId
+        || item.node.id === selectedNodeId
+        || Boolean(item.node.data.is_focus);
+      return {
+        item,
+        distance,
+        priority: labelPriority(item.node, distance, hoveredNodeId, selectedNodeId) + zoomFactor * 120,
+        required,
+        visible: vector.z < 1 && x > -120 && x < width + 120 && y > -80 && y < height + 120,
+        x,
+        y,
+      };
+    })
+    .sort((left, right) => right.priority - left.priority);
+
+  const occupied: Array<{ left: number; right: number; top: number; bottom: number }> = [];
+  const maxLabels = Math.round(10 + labelDensity * 38 + Math.max(0, 820 - camera.position.length()) / 36);
+  const minPriority = 250 + (1 - labelDensity) * 245;
+  let shown = 0;
+
+  for (const candidate of candidates) {
+    const { item, x, y, visible, required, priority, distance } = candidate;
+    const labelWidth = item.element.offsetWidth || 160;
+    const labelHeight = item.element.offsetHeight || 48;
+    const box = {
+      left: x - labelWidth / 2 - 8,
+      right: x + labelWidth / 2 + 8,
+      top: y - labelHeight - 10,
+      bottom: y + 8,
+    };
+    const overlaps = occupied.some((placed) => (
+      box.left < placed.right
+      && box.right > placed.left
+      && box.top < placed.bottom
+      && box.bottom > placed.top
+    ));
+    const canShow = visible
+      && (required || priority >= minPriority)
+      && (required || shown < maxLabels)
+      && (!overlaps || required);
+
     item.element.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -100%)`;
-    item.element.style.opacity = visible && important && densityGate > 0.18 ? "1" : "0";
+    item.element.style.opacity = canShow ? "1" : "0";
+    item.element.style.pointerEvents = canShow ? "auto" : "none";
     item.element.style.zIndex = String(Math.max(1, Math.round(3000 - distance)));
+    item.element.dataset.visible = canShow ? "true" : "false";
+    if (canShow) {
+      shown += 1;
+      occupied.push(box);
+    }
   }
+}
+
+function labelPriority(
+  node: SceneNode,
+  distance: number,
+  hoveredNodeId: string | null,
+  selectedNodeId: string | null,
+) {
+  let priority = node.weight * 120 + node.confidence * 90;
+  if (node.id === hoveredNodeId) priority += 1200;
+  if (node.id === selectedNodeId) priority += 1100;
+  if (Boolean(node.data.is_focus)) priority += 950;
+  if (node.type === "narrative") priority += 680;
+  if (node.type === "article" && node.id.startsWith("article_")) priority += 580;
+  if (node.type === "source") priority += 340;
+  if (entityNodeTypes.has(node.type) && node.weight > 1.15) priority += 210;
+  priority += Math.max(0, 760 - distance) * 0.32;
+  return priority;
 }
 
 function shortLabel(value: string) {
@@ -1107,6 +1178,39 @@ function escapeHtml(value: string) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function NarrativeSignals({
+  signals
+}: {
+  signals: Array<{ id: string; title: string; confidence: number; evidenceCount: number }>;
+}) {
+  return (
+    <section className={styles.narrativeSignals}>
+      <div>
+        <span>Нарративный слой</span>
+        <h3>Общие линии графа</h3>
+      </div>
+      {signals.length > 0 ? (
+        <div className={styles.narrativeSignalList}>
+          {signals.map((signal) => (
+            <article key={signal.id} className={styles.narrativeSignal}>
+              <strong>{signal.title}</strong>
+              <small>
+                {formatNumber(signal.confidence)}
+                {signal.evidenceCount ? ` · ${signal.evidenceCount} доказательств` : ""}
+              </small>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p>
+          Для этой сцены пока нет общего нарратива. Запусти анализ и discovery, чтобы система
+          связала статьи в смысловые линии.
+        </p>
+      )}
+    </section>
+  );
 }
 
 function NodeDetails({ currentArticleId, node }: { currentArticleId: number; node: GraphNode }) {
