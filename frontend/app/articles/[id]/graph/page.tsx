@@ -451,11 +451,11 @@ function createThreeGraphScene({
   selectedNodeId: string | null;
 }) {
   const visibleGraph = applyGraphFilters(graph, filters, focusMode ? selectedNodeId : null);
-  const sceneNodes = buildSceneNodes(visibleGraph, activeArticleId, mode);
+  const sceneNodes = centerSceneNodes(buildSceneNodes(visibleGraph, activeArticleId, mode));
   const nodeById = new Map(sceneNodes.map((node) => [node.id, node]));
   const neighborMap = buildNeighborMap(visibleGraph.edges);
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2("#030405", 0.0022);
+  scene.fog = new THREE.FogExp2("#030405", 0.002);
 
   const width = Math.max(container.clientWidth, 640);
   const height = Math.max(container.clientHeight, 480);
@@ -467,12 +467,12 @@ function createThreeGraphScene({
   renderer.setSize(width, height);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.86;
+  renderer.toneMappingExposure = 1;
   container.replaceChildren(renderer.domElement);
 
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.3, 0.54, 0.22);
+  const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.46, 0.62, 0.15);
   composer.addPass(bloomPass);
   composer.addPass(new OutputPass());
 
@@ -492,11 +492,11 @@ function createThreeGraphScene({
   controls.autoRotateSpeed = 0.8;
   controls.target.set(0, 0, 0);
 
-  scene.add(new THREE.AmbientLight("#7dd3fc", 0.42));
-  const keyLight = new THREE.PointLight("#38bdf8", 1.75, 1200);
+  scene.add(new THREE.AmbientLight("#7dd3fc", 0.56));
+  const keyLight = new THREE.PointLight("#38bdf8", 2.55, 1200);
   keyLight.position.set(-220, 260, 300);
   scene.add(keyLight);
-  const warmLight = new THREE.PointLight("#fb923c", 1.1, 900);
+  const warmLight = new THREE.PointLight("#fb923c", 1.7, 900);
   warmLight.position.set(260, -180, 260);
   scene.add(warmLight);
 
@@ -795,6 +795,18 @@ function buildSceneNodes(graph: ArticleGraphResponse, activeArticleId: number, m
   return result;
 }
 
+function centerSceneNodes(nodes: SceneNode[]) {
+  if (nodes.length === 0) return nodes;
+  const bounds = new THREE.Box3().setFromPoints(nodes.map((node) => node.position));
+  const center = bounds.getCenter(new THREE.Vector3());
+  // Центрируем не только активную статью, а всю карту: иначе плотные связки могут стартовать ниже экрана.
+  for (const node of nodes) {
+    node.position.sub(center);
+    node.position.y += 28;
+  }
+  return nodes;
+}
+
 function radialNode(node: GraphNode, index: number, count: number, radius: number, yScale: number, focused: boolean) {
   const angle = (index / Math.max(count, 1)) * Math.PI * 2;
   return toSceneNode(
@@ -832,11 +844,11 @@ function createNodeMesh(node: SceneNode, focused: boolean, selected: boolean) {
   const material = new THREE.MeshStandardMaterial({
     color: node.color,
     emissive: node.color,
-    emissiveIntensity: focused || selected ? 1.05 : node.type === "article" ? 0.52 : 0.34,
+    emissiveIntensity: focused || selected ? 1.45 : node.type === "article" ? 0.82 : 0.55,
     metalness: 0.15,
-    roughness: 0.32,
+    roughness: 0.26,
     transparent: true,
-    opacity: Math.max(0.42, Math.min(0.9, node.confidence)),
+    opacity: Math.max(0.46, Math.min(0.96, node.confidence)),
   });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.copy(node.position);
@@ -845,7 +857,7 @@ function createNodeMesh(node: SceneNode, focused: boolean, selected: boolean) {
   const glowMaterial = new THREE.MeshBasicMaterial({
     color: node.color,
     transparent: true,
-    opacity: focused || selected ? 0.08 : 0.022,
+    opacity: focused || selected ? 0.12 : 0.04,
     blending: THREE.AdditiveBlending,
     depthWrite: false
   });
@@ -858,7 +870,7 @@ function createNodeMesh(node: SceneNode, focused: boolean, selected: boolean) {
       new THREE.MeshBasicMaterial({
         color: selected ? "#fbbf24" : "#38bdf8",
         transparent: true,
-        opacity: selected ? 0.58 : 0.24,
+        opacity: selected ? 0.72 : 0.34,
         blending: THREE.AdditiveBlending,
         depthWrite: false
       })
@@ -873,7 +885,7 @@ function createEdgeObject(source: SceneNode, target: SceneNode, edge: GraphEdge)
   const curve = edgeCurve(source, target);
   const color = edgePalette[edge.label] ?? "#7dd3fc";
   const strength = edgeStrength(edge);
-  const opacity = Math.max(0.1, Math.min(0.62, strength * 0.72));
+  const opacity = Math.max(0.14, Math.min(0.82, strength * 0.88));
   if (routeEdgeTypes.has(edge.label)) {
     const group = new THREE.Group();
     group.userData.edgeId = edge.id;
@@ -881,7 +893,7 @@ function createEdgeObject(source: SceneNode, target: SceneNode, edge: GraphEdge)
     const material = new THREE.MeshBasicMaterial({
       color,
       transparent: true,
-      opacity: Math.max(0.24, opacity),
+      opacity: Math.max(0.34, opacity),
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
@@ -897,7 +909,7 @@ function createEdgeObject(source: SceneNode, target: SceneNode, edge: GraphEdge)
         new THREE.MeshBasicMaterial({
           color: index % 2 === 0 ? "#f97316" : color,
           transparent: true,
-          opacity: Math.max(0.2, opacity * 0.82),
+          opacity: Math.max(0.3, opacity * 0.82),
           blending: THREE.AdditiveBlending,
           depthWrite: false
         })
@@ -914,7 +926,7 @@ function createEdgeObject(source: SceneNode, target: SceneNode, edge: GraphEdge)
   const material = new THREE.LineBasicMaterial({
     color,
     transparent: true,
-    opacity: Math.max(0.1, opacity * 0.48),
+    opacity: Math.max(0.14, opacity * 0.56),
     blending: THREE.AdditiveBlending
   });
   return new THREE.Line(geometry, material);
@@ -939,7 +951,7 @@ function createFlowParticles(source: SceneNode, target: SceneNode, edge: GraphEd
       new THREE.MeshBasicMaterial({
         color,
         transparent: true,
-        opacity: 0.42,
+        opacity: 0.58,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       }),
@@ -988,7 +1000,7 @@ function applyHoverState(
     mesh.scale.setScalar(active ? (node.id === hoveredNodeId ? 1.18 : 1) : 0.72);
     const material = mesh.material;
     if (!Array.isArray(material)) {
-      material.opacity = active ? Math.max(0.38, node.confidence) : 0.14;
+      material.opacity = active ? Math.max(0.44, Math.min(0.96, node.confidence)) : 0.16;
       material.needsUpdate = true;
     }
   }
@@ -999,7 +1011,7 @@ function applyHoverState(
       if (object instanceof THREE.Mesh || object instanceof THREE.Line) {
         const material = object.material;
         if (!Array.isArray(material)) {
-          material.opacity = active ? Math.max(0.16, Math.min(0.52, edgeStrength(item.edge) * 0.68)) : 0.04;
+          material.opacity = active ? Math.max(0.22, Math.min(0.72, edgeStrength(item.edge) * 0.82)) : 0.06;
           material.needsUpdate = true;
         }
       }
@@ -1032,7 +1044,7 @@ function edgeStrength(edge: GraphEdge) {
 }
 
 function addStarField(scene: THREE.Scene) {
-  const count = 640;
+  const count = 760;
   const positions = new Float32Array(count * 3);
   for (let index = 0; index < count; index += 1) {
     positions[index * 3] = (Math.random() - 0.5) * 1600;
@@ -1043,8 +1055,8 @@ function addStarField(scene: THREE.Scene) {
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   const material = new THREE.PointsMaterial({
     color: "#38bdf8",
-    opacity: 0.17,
-    size: 1.25,
+    opacity: 0.23,
+    size: 1.35,
     transparent: true,
     blending: THREE.AdditiveBlending,
     depthWrite: false

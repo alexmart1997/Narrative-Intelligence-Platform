@@ -104,9 +104,9 @@
   min-height: calc(100vh - 85px);
   overflow: hidden;
   background:
-    radial-gradient(circle at 22% 34%, rgba(14, 165, 233, 0.12), transparent 24%),
-    radial-gradient(circle at 72% 18%, rgba(251, 113, 133, 0.08), transparent 28%),
-    radial-gradient(circle at 58% 76%, rgba(249, 115, 22, 0.07), transparent 26%),
+    radial-gradient(circle at 22% 34%, rgba(14, 165, 233, 0.16), transparent 24%),
+    radial-gradient(circle at 72% 18%, rgba(251, 113, 133, 0.1), transparent 28%),
+    radial-gradient(circle at 58% 76%, rgba(249, 115, 22, 0.09), transparent 26%),
     linear-gradient(180deg, #111417 0%, #07090c 55%, #030405 100%);
 }
 
@@ -126,7 +126,7 @@
   position: absolute;
   inset: 0;
   z-index: 1;
-  background: radial-gradient(circle at center, transparent 34%, rgba(0, 0, 0, 0.58) 100%);
+  background: radial-gradient(circle at center, transparent 36%, rgba(0, 0, 0, 0.52) 100%);
   content: "";
   pointer-events: none;
 }
