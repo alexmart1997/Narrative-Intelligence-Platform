@@ -259,22 +259,22 @@ function ArticlesContent() {
       <section className={styles.commandBar}>
         <div className={styles.brandBlock}>
           <p className={styles.eyebrow}>Narrative Intelligence Platform</p>
-          <h1>Political Coverage Command Center</h1>
-          <span>Monitor sources, narrative drift, events and evidence in one analytical feed.</span>
+          <h1>Центр анализа новостей</h1>
+          <span>Источники, события, участники, фрейминг и нарративы в одном спокойном аналитическом потоке.</span>
         </div>
         <div className={styles.commandSearch}>
           <button className={styles.searchShell} onClick={() => setShowPalette(true)}>
-            <span>Search articles, events, entities, narratives...</span>
+            <span>Поиск по статьям, событиям, участникам и нарративам...</span>
             <kbd>Cmd K</kbd>
           </button>
           <div className={styles.quickActions}>
             <button onClick={handlePrecompute} disabled={globalAction !== null}>
-              {globalAction === "precompute" ? "Precomputing..." : "Precompute Graphs"}
+              {globalAction === "precompute" ? "Считаю..." : "Подготовить графы"}
             </button>
             <button onClick={handleDiscoverNarratives} disabled={globalAction !== null}>
-              {globalAction === "discover_narratives" ? "Discovering..." : "Discover Narratives"}
+              {globalAction === "discover_narratives" ? "Ищу..." : "Найти нарративы"}
             </button>
-            <Link href="/narratives">Narratives</Link>
+            <Link href="/narratives">Нарративы</Link>
           </div>
         </div>
         <div className={styles.densitySwitch} aria-label="Density switch">
@@ -304,7 +304,7 @@ function ArticlesContent() {
       <section className={styles.timelinePanel}>
         <div>
           <p className={styles.panelKicker}>Timeline</p>
-          <h2>Article velocity by day</h2>
+          <h2>Публикации по дням</h2>
         </div>
         <div className={styles.timelineBars}>
           {timeline.length > 0 ? timeline.map((item) => (
@@ -313,67 +313,67 @@ function ArticlesContent() {
               title={`${item.day}: ${item.count}`}
               style={{ height: `${Math.max(12, item.height)}%` }}
             />
-          )) : <p>No timeline data yet</p>}
+          )) : <p>Пока нет данных</p>}
         </div>
       </section>
 
       <section className={styles.filterBar} aria-label="Article filters">
         <label>
-          Source
+          Источник
           <select value={sourceCode} onChange={(event) => setSourceCode(event.target.value)}>
-            <option value="">All sources</option>
+            <option value="">Все источники</option>
             {sources.map((source) => (
               <option key={source.code} value={source.code}>{source.name}</option>
             ))}
           </select>
         </label>
         <label>
-          From
+          С
           <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
         </label>
         <label>
-          To
+          По
           <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
         </label>
         <label>
-          Language
+          Язык
           <select value={language} onChange={(event) => setLanguage(event.target.value)}>
-            <option value="">All</option>
+            <option value="">Все</option>
             {languages.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </label>
         <label>
-          Material
+          Тип
           <select value={materialType} onChange={(event) => setMaterialType(event.target.value)}>
-            <option value="">All</option>
+            <option value="">Все</option>
             {materialTypes.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </label>
         <label>
-          Status
+          Статус
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
-            <option value="">All</option>
-            <option value="analyzed">Analyzed</option>
-            <option value="not_analyzed">Not analyzed</option>
+            <option value="">Все</option>
+            <option value="analyzed">Проанализировано</option>
+            <option value="not_analyzed">Без анализа</option>
           </select>
         </label>
         <label>
-          Sentiment
+          Тональность
           <select value={sentimentFilter} onChange={(event) => setSentimentFilter(event.target.value)}>
-            <option value="">All</option>
+            <option value="">Все</option>
             {sentiments.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </label>
         <label className={styles.queryFilter}>
-          Search
+          Поиск
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Moldova, NATO, elections..."
           />
         </label>
-        <button className={styles.applyButton} onClick={loadArticles} disabled={loading}>Apply</button>
-        <button className={styles.ghostButton} onClick={resetFilters} disabled={loading}>Reset</button>
+        <button className={styles.applyButton} onClick={loadArticles} disabled={loading}>Применить</button>
+        <button className={styles.ghostButton} onClick={resetFilters} disabled={loading}>Сбросить</button>
       </section>
 
       {error ? (
@@ -395,9 +395,9 @@ function ArticlesContent() {
           <div className={styles.sectionHeader}>
             <div>
               <p className={styles.panelKicker}>Intelligence Feed</p>
-              <h2>Latest analyzed coverage</h2>
+              <h2>Лента материалов</h2>
             </div>
-            <span>{visibleArticles.length} visible</span>
+            <span>{visibleArticles.length} видно</span>
           </div>
 
           {loading ? (
@@ -425,19 +425,19 @@ function ArticlesContent() {
         </section>
 
         <aside className={styles.insightPanel}>
-          <InsightCard title="Event Spotlight" kicker="Active event">
+          <InsightCard title="Главное событие" kicker="Активный фокус">
             {spotlight ? (
               <>
                 <strong>{spotlight.title}</strong>
                 <p>{spotlight.source_name} · {formatDate(spotlight.published_at)}</p>
                 <span className={spotlight.has_event ? styles.positiveBadge : styles.neutralBadge}>
-                  {spotlight.has_event ? "event linked" : "event pending"}
+                  {spotlight.has_event ? "событие связано" : "ожидает события"}
                 </span>
               </>
             ) : <EmptyMini label="No event signal yet" />}
           </InsightCard>
 
-          <InsightCard title="Top Narratives" kicker="Narrative hypotheses">
+          <InsightCard title="Топ нарративов" kicker="Гипотезы">
             {topNarrativeHypotheses.length > 0 ? (
               <div className={styles.rankList}>
                 {topNarrativeHypotheses.map((item) => (
@@ -453,7 +453,7 @@ function ArticlesContent() {
             ) : <EmptyMini label="Run narrative discovery to populate this panel" />}
           </InsightCard>
 
-          <InsightCard title="Source Mix" kicker="Coverage distribution">
+          <InsightCard title="Источники" kicker="Распределение">
             {sourceMix.length > 0 ? (
               <div className={styles.sourceMix}>
                 {sourceMix.map((item) => (
@@ -467,10 +467,10 @@ function ArticlesContent() {
             ) : <EmptyMini label="No sources in current filter" />}
           </InsightCard>
 
-          <InsightCard title="AI Insight Callout" kicker="System read">
+          <InsightCard title="Сигнал системы" kicker="AI insight">
             <div className={styles.callout}>
               <strong>{buildAiInsight(visibleArticles, analysisByArticle)}</strong>
-              <p>Use Compare and 3D Graph to inspect framing differences and shared entities.</p>
+              <p>Используй сравнение и 3D-граф, чтобы увидеть различия фрейминга и общих участников.</p>
             </div>
           </InsightCard>
         </aside>
@@ -529,35 +529,35 @@ function ArticleCard({
         <span>{article.language}</span>
         <span>{article.material_type}</span>
         <span className={article.has_analysis ? styles.positiveBadge : styles.warningBadge}>
-          {article.has_analysis ? "analyzed" : "unprocessed"}
+          {article.has_analysis ? "анализ есть" : "без анализа"}
         </span>
-        {article.has_event ? <span className={styles.eventBadge}>event</span> : null}
+        {article.has_event ? <span className={styles.eventBadge}>событие</span> : null}
       </div>
 
-      <h3>{article.title}</h3>
-      <p className={styles.summary}>{analysis?.short_summary || article.text_preview || "No preview available."}</p>
+      <h3>{localizedArticleTitle(article, analysis)}</h3>
+      <p className={styles.summary}>{localizedArticleSummary(article, analysis)}</p>
 
       <div className={styles.analysisGrid}>
-        <InfoPill label="Sentiment" value={analysis?.sentiment ?? "—"} tone={analysis?.sentiment ?? "neutral"} />
-        <InfoPill label="Framing" value={analysis?.framing ?? "No framing yet"} />
-        <InfoPill label="Narrative" value={analysis?.narrative_hypothesis ?? "Run analysis to infer narrative"} />
+        <InfoPill label="Тональность" value={analysis?.sentiment ?? "—"} tone={analysis?.sentiment ?? "neutral"} />
+        <InfoPill label="Фрейминг" value={analysis?.framing ?? "Фрейминг появится после анализа"} />
+        <InfoPill label="Нарратив" value={analysis?.narrative_hypothesis ?? "Запусти анализ, чтобы получить нарратив"} />
       </div>
 
       <div className={styles.entityRow}>
         {entities.length > 0 ? entities.map((entity) => (
           <span key={entity.id}>{entity.name}</span>
-        )) : <span className={styles.mutedChip}>entities pending</span>}
+        )) : <span className={styles.mutedChip}>сущности ожидают анализа</span>}
       </div>
 
       <div className={styles.cardActions}>
         <button onClick={() => onAnalyze(article.id)} disabled={busy}>
-          {actionState?.articleId === article.id && actionState.action === "analyze" ? "Analyzing..." : "Analyze"}
+          {actionState?.articleId === article.id && actionState.action === "analyze" ? "Анализ..." : "Анализ"}
         </button>
-        <button onClick={() => onGraph(article.id)} disabled={busy}>Open 3D Graph</button>
-        <button onClick={() => onCompare(article.id)} disabled={busy}>Compare</button>
-        <button onClick={() => article.event_id && onEvent(article.event_id)} disabled={busy || !article.event_id}>Event</button>
-        <button onClick={() => onEvidence(article.id)} disabled={busy || !article.has_analysis}>Evidence</button>
-        <button onClick={() => onSimilar(article.id)} disabled={busy}>Similar</button>
+        <button onClick={() => onGraph(article.id)} disabled={busy}>3D-граф</button>
+        <button onClick={() => onCompare(article.id)} disabled={busy}>Сравнить</button>
+        <button onClick={() => article.event_id && onEvent(article.event_id)} disabled={busy || !article.event_id}>Событие</button>
+        <button onClick={() => onEvidence(article.id)} disabled={busy || !article.has_analysis}>Доказательства</button>
+        <button onClick={() => onSimilar(article.id)} disabled={busy}>Похожие</button>
       </div>
 
       {notice ? <div className={styles.successState}>{notice}</div> : null}
@@ -584,6 +584,16 @@ function InfoPill({ label, tone, value }: { label: string; tone?: string; value:
       <strong className={tone ? styles[`tone_${tone}`] ?? "" : ""}>{truncate(value, 116)}</strong>
     </div>
   );
+}
+
+function localizedArticleTitle(article: ArticleListItem, analysis: ArticleAnalysisResponse | null) {
+  if (article.language === "ru") return article.title;
+  return analysis?.short_summary || article.title;
+}
+
+function localizedArticleSummary(article: ArticleListItem, analysis: ArticleAnalysisResponse | null) {
+  if (article.language === "ru") return analysis?.short_summary || article.text_preview || "Нет краткого описания.";
+  return analysis?.detailed_summary || analysis?.short_summary || article.text_preview || "Русский перевод появится после анализа.";
 }
 
 function InsightCard({ children, kicker, title }: { children: ReactNode; kicker: string; title: string }) {

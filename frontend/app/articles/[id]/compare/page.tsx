@@ -86,25 +86,25 @@ export default function ComparePage() {
       <header className={styles.header}>
         <div>
           <Link className={styles.backLink} href="/articles">
-            Back to articles
+            Назад к статьям
           </Link>
-          <p className={styles.eyebrow}>Narrative comparison</p>
+          <p className={styles.eyebrow}>Сравнение освещения</p>
           <h1>{sourceArticle?.title ?? `Article ${params.id}`}</h1>
         </div>
         <button className={styles.primaryButton} onClick={() => router.push(`/articles/${articleId}/graph`)}>
-          Open graph
+          Открыть граф
         </button>
       </header>
 
-      {loading ? <div className={styles.state}>Loading comparisons via Ollama...</div> : null}
+      {loading ? <div className={styles.state}>Загружаю сравнение через Ollama...</div> : null}
       {error ? <div className={styles.error}>{error}</div> : null}
       {!loading && !error && cards.length === 0 ? (
-        <div className={styles.state}>No similar articles to compare yet.</div>
+        <div className={styles.state}>Пока нет похожих статей для сравнения.</div>
       ) : null}
 
       {strongestDifference ? (
         <section className={styles.alert}>
-          Strong narrative divergence found: articles look related, but fact overlap or framing differs sharply.
+          Найдено сильное расхождение: статьи похожи по событию, но факты или фрейминг заметно отличаются.
         </section>
       ) : null}
 
@@ -127,27 +127,27 @@ function ComparisonCardView({ card }: { card: ComparisonCard }) {
     <article className={`${styles.card} ${divergence ? styles.strongDivergence : ""}`}>
       <div className={styles.cardHeader}>
         <div>
-          <p className={styles.kicker}>Similarity score {formatPercent(card.item.similarity_score)}</p>
+          <p className={styles.kicker}>Сходство {formatPercent(card.item.similarity_score)}</p>
           <h2>{card.sourceArticle.sourceName} vs {card.targetArticle.sourceName}</h2>
         </div>
-        {divergence ? <span className={styles.warningBadge}>strong divergence</span> : null}
+        {divergence ? <span className={styles.warningBadge}>сильное расхождение</span> : null}
       </div>
 
       <div className={styles.metrics}>
-        <Metric label="Same event" value={comparison.same_event_probability} tone={sameEventTone} />
-        <Metric label="Fact overlap" value={comparison.fact_overlap} tone={overlapTone} />
+        <Metric label="То же событие" value={comparison.same_event_probability} tone={sameEventTone} />
+        <Metric label="Совпадение фактов" value={comparison.fact_overlap} tone={overlapTone} />
       </div>
 
       <div className={styles.sources}>
         <SourceColumn
-          title="Source 1"
+          title="Источник 1"
           article={card.sourceArticle}
           framing={comparison.source_1_framing}
           sympathy={comparison.source_1_sympathy}
           criticism={comparison.source_1_criticism}
         />
         <SourceColumn
-          title="Source 2"
+          title="Источник 2"
           article={card.targetArticle}
           framing={comparison.source_2_framing}
           sympathy={comparison.source_2_sympathy}
@@ -156,17 +156,17 @@ function ComparisonCardView({ card }: { card: ComparisonCard }) {
       </div>
 
       <section className={styles.narrative}>
-        <span>Narrative difference</span>
+        <span>Разница нарративов</span>
         <p>{comparison.narrative_difference}</p>
       </section>
 
       <div className={styles.lists}>
-        <FactList title="Common facts" items={comparison.main_common_facts} />
-        <FactList title="Differences" items={comparison.differences} emphasis />
+        <FactList title="Общие факты" items={comparison.main_common_facts} />
+        <FactList title="Отличия" items={comparison.differences} emphasis />
       </div>
 
       <section className={styles.conclusion}>
-        <h3>Conclusion</h3>
+        <h3>Вывод</h3>
         <p>{comparison.conclusion}</p>
       </section>
     </article>
@@ -194,13 +194,13 @@ function SourceColumn({
           <h3>{article.sourceName}</h3>
         </div>
         <Link className={styles.graphLink} href={`/articles/${article.id}/graph`}>
-          Open graph
+          Граф
         </Link>
       </div>
       <p className={styles.articleTitle}>{article.title}</p>
-      <InfoBlock label="Framing" value={framing} />
-      <InfoBlock label="Sympathy" value={sympathy} tone={sentimentTone(sympathy)} />
-      <InfoBlock label="Criticism" value={criticism} tone={sentimentTone(criticism, true)} />
+      <InfoBlock label="Фрейминг" value={framing} />
+      <InfoBlock label="Симпатия" value={sympathy} tone={sentimentTone(sympathy)} />
+      <InfoBlock label="Критика" value={criticism} tone={sentimentTone(criticism, true)} />
     </section>
   );
 }
@@ -222,7 +222,7 @@ function InfoBlock({ label, tone, value }: { label: string; tone?: string; value
         {label}
         {tone ? <em className={`${styles.smallBadge} ${styles[tone]}`}>{tone}</em> : null}
       </span>
-      <p>{value || "Not specified"}</p>
+      <p>{value || "Не указано"}</p>
     </div>
   );
 }
@@ -232,7 +232,7 @@ function FactList({ emphasis, items, title }: { emphasis?: boolean; items: strin
     <section className={styles.factList}>
       <h3>{title}</h3>
       {items.length === 0 ? (
-        <p className={styles.empty}>No data.</p>
+        <p className={styles.empty}>Нет данных.</p>
       ) : (
         <ul>
           {items.map((item) => (
@@ -251,9 +251,15 @@ function graphToBrief(articleId: number, graph: ArticleGraphResponse): ArticleBr
   const source = graph.nodes.find((node) => node.type === "source");
   return {
     id: articleId,
-    title: article?.label ?? `Article ${articleId}`,
+    title: graphNodeLabel(article) || `Статья ${articleId}`,
     sourceName: source?.label ?? `Source ${articleId}`
   };
+}
+
+function graphNodeLabel(node: ArticleGraphResponse["nodes"][number] | undefined) {
+  if (!node) return "";
+  const displayLabel = node.data.display_label;
+  return typeof displayLabel === "string" && displayLabel.trim() ? displayLabel : node.label;
 }
 
 function formatPercent(value: number) {

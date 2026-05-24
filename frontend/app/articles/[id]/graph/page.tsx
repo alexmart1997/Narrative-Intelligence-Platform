@@ -60,9 +60,9 @@ const defaultFilters: VisualFilters = {
   showArticles: true,
   showSources: true,
   showNarratives: true,
-  showWeakEdges: true,
+  showWeakEdges: false,
   confidenceThreshold: 0,
-  labelDensity: 0.55
+  labelDensity: 0.24
 };
 
 const entityNodeTypes = new Set(["person", "organization", "country", "location", "concept"]);
@@ -139,7 +139,7 @@ export default function ArticleGraphPage() {
 
   const title = useMemo(() => {
     const articleNode = graph?.nodes.find((node) => node.id === `article_${activeArticleId}`);
-    return articleNode?.label ?? `Статья ${activeArticleId}`;
+    return graphNodeLabel(articleNode) ?? `Статья ${activeArticleId}`;
   }, [activeArticleId, graph]);
 
   const relatedCount = useMemo(() => {
@@ -250,7 +250,7 @@ export default function ArticleGraphPage() {
           <Link className={styles.backLink} href="/articles">
             Назад к статьям
           </Link>
-          <p className={styles.eyebrow}>3D intelligence graph</p>
+          <p className={styles.eyebrow}>3D-граф связей</p>
           <h1>{title}</h1>
         </div>
         <div className={styles.headerActions}>
@@ -258,16 +258,16 @@ export default function ArticleGraphPage() {
             {graph ? `${graph.nodes.length} узлов · ${graph.edges.length} связей · ${relatedCount} связанных статей` : "3D граф"}
           </span>
           <button onClick={() => sceneApiRef.current?.resetView()} disabled={!graph || loading}>
-            Reset view
+            Сброс
           </button>
           <button onClick={() => sceneApiRef.current?.topDown()} disabled={!graph || loading}>
-            Top-down
+            Сверху
           </button>
           <button className={autoOrbit ? styles.activeButton : ""} onClick={() => setAutoOrbit((value) => !value)} disabled={!graph || loading}>
-            Auto-orbit
+            Орбита
           </button>
           <button className={focusMode ? styles.activeButton : ""} onClick={() => setFocusMode((value) => !value)} disabled={!graph || loading}>
-            Focus mode
+            Фокус
           </button>
           {focusEntity ? (
             <button onClick={() => setFocusEntity(null)} disabled={loading || processing}>
@@ -294,29 +294,29 @@ export default function ArticleGraphPage() {
             ))}
           </div>
           <div className={styles.filterPanel}>
-            <strong>Filters</strong>
+            <strong>Фильтры</strong>
             <label>
               <input type="checkbox" checked={filters.showEntities} onChange={(event) => updateFilter("showEntities", event.target.checked)} />
-              entities
+              сущности
             </label>
             <label>
               <input type="checkbox" checked={filters.showArticles} onChange={(event) => updateFilter("showArticles", event.target.checked)} />
-              articles
+              статьи
             </label>
             <label>
               <input type="checkbox" checked={filters.showSources} onChange={(event) => updateFilter("showSources", event.target.checked)} />
-              sources
+              источники
             </label>
             <label>
               <input type="checkbox" checked={filters.showNarratives} onChange={(event) => updateFilter("showNarratives", event.target.checked)} />
-              narratives
+              нарративы
             </label>
             <label>
               <input type="checkbox" checked={filters.showWeakEdges} onChange={(event) => updateFilter("showWeakEdges", event.target.checked)} />
-              weak edges
+              слабые связи
             </label>
             <label>
-              confidence
+              уверенность
               <input
                 type="range"
                 min="0"
@@ -327,7 +327,7 @@ export default function ArticleGraphPage() {
               />
             </label>
             <label>
-              label density
+              подписи
               <input
                 type="range"
                 min="0.1"
@@ -347,7 +347,7 @@ export default function ArticleGraphPage() {
             ))}
           </div>
           <div className={styles.sceneMeta}>
-            <strong>Premium intelligence map</strong>
+            <strong>Карта связей</strong>
             <span>Размер = важность / плотность / уверенность</span>
             <span>Прозрачность = confidence, толщина дуги = сила связи</span>
             <span>Клик по статье = открыть ее граф · клик по сущности = переезд к новостям с ней</span>
@@ -1054,7 +1054,7 @@ function createHtmlLabel(node: SceneNode) {
   element.className = `${styles.nodeLabel} ${styles[`label_${node.type}`] ?? ""}`;
   element.innerHTML = `
     <span>${translateNodeType(node.type)}</span>
-    <strong>${escapeHtml(shortLabel(node.label))}</strong>
+    <strong>${escapeHtml(shortLabel(graphNodeLabel(node)))}</strong>
   `;
   return element;
 }
@@ -1079,13 +1079,19 @@ function updateHtmlLabels(
     const distance = camera.position.distanceTo(item.node.position);
     const zoomFactor = distance < 420 ? 0.35 : distance < 720 ? 0.18 : 0;
     const densityGate = labelDensity + zoomFactor;
-    const important = ["article", "source", "narrative"].includes(item.node.type)
-      || item.node.weight >= 1.08
-      || labels.length <= 18
+    const labelThreshold = 1.22 + (1 - labelDensity) * 0.58;
+    const primaryArticle = item.node.type === "article" && item.node.id.startsWith("article_");
+    const relatedArticleLabel = item.node.type === "article" && (distance < 430 || labelDensity > 0.65);
+    const important = primaryArticle
+      || relatedArticleLabel
       || item.node.id === hoveredNodeId
-      || item.node.id === selectedNodeId;
+      || item.node.id === selectedNodeId
+      || (distance < 460 && ["source", "narrative"].includes(item.node.type))
+      || (distance < 520 && item.node.weight >= labelThreshold)
+      || labels.length <= 18
+      || Boolean(item.node.data.is_focus);
     item.element.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -100%)`;
-    item.element.style.opacity = visible && (important || item.node.confidence <= densityGate) ? "1" : "0";
+    item.element.style.opacity = visible && important && densityGate > 0.18 ? "1" : "0";
     item.element.style.zIndex = String(Math.max(1, Math.round(3000 - distance)));
   }
 }
@@ -1108,7 +1114,7 @@ function NodeDetails({ currentArticleId, node }: { currentArticleId: number; nod
   return (
     <div className={styles.details}>
       <span className={`${styles.badge} ${styles[node.type]}`}>{translateNodeType(node.type)}</span>
-      <h3>{node.label}</h3>
+      <h3>{graphNodeLabel(node)}</h3>
       {node.type === "article" && Number.isFinite(articleId) && articleId !== currentArticleId ? (
         <p className={styles.hint}>Клик по этой статье перестроит 3D-сцену вокруг нее.</p>
       ) : null}
@@ -1155,16 +1161,22 @@ function translateNodeType(type: string) {
   return nodeTypes.find((item) => item.type === type)?.label ?? type;
 }
 
+function graphNodeLabel(node: GraphNode | SceneNode | undefined) {
+  if (!node) return "";
+  const displayLabel = node.data.display_label;
+  return typeof displayLabel === "string" && displayLabel.trim() ? displayLabel : node.label;
+}
+
 function translateEdge(label: string) {
   return edgeLabels[label] ?? label;
 }
 
 function translateGraphMode(mode: GraphMode) {
   const labels: Record<GraphMode, string> = {
-    article: "Article Mode",
-    event: "Event Mode",
-    narrative: "Narrative Mode",
-    divergence: "Divergence Mode",
+    article: "Статья",
+    event: "Событие",
+    narrative: "Нарратив",
+    divergence: "Расхождения",
   };
   return labels[mode];
 }

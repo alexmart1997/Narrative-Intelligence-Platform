@@ -72,7 +72,10 @@ def precompute_article_intelligence(db: Session, params: dict[str, Any]) -> dict
 
 def get_cached_graph(db: Session, article_id: int) -> dict[str, Any] | None:
     cache = db.scalar(select(ArticlePrecomputeCache).where(ArticlePrecomputeCache.article_id == article_id))
-    return _loads_json(cache.graph_json) if cache and cache.graph_json and cache.status == "ready" else None
+    data = _loads_json(cache.graph_json) if cache and cache.graph_json and cache.status == "ready" else None
+    if not isinstance(data, dict) or not _has_fresh_graph_shape(data):
+        return None
+    return data
 
 
 def get_cached_similar(db: Session, article_id: int) -> list[dict[str, Any]] | None:
@@ -120,3 +123,18 @@ def _loads_json(value: str | None) -> Any:
         return json.loads(value)
     except json.JSONDecodeError:
         return None
+
+
+def _has_fresh_graph_shape(data: dict[str, Any]) -> bool:
+    """Не отдаем старый graph cache после изменения payload для русских подписей."""
+
+    nodes = data.get("nodes")
+    if not isinstance(nodes, list):
+        return False
+    for node in nodes:
+        if not isinstance(node, dict) or node.get("type") != "article":
+            continue
+        node_data = node.get("data")
+        if not isinstance(node_data, dict) or "display_label" not in node_data:
+            return False
+    return True

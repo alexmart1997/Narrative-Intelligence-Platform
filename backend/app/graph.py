@@ -71,6 +71,7 @@ def build_article_graph(
         {
             "article_id": article.id,
             "url": article.url,
+            "display_label": _article_display_label(article),
             "published_at": article.published_at.isoformat(),
             "language": article.language,
             **_article_density_data(article),
@@ -226,6 +227,7 @@ def _add_entity_focus_articles(
             "article",
             {
                 "article_id": article.id,
+                "display_label": _article_display_label(article),
                 "source_name": article.source.name if article.source else "unknown",
                 "published_at": article.published_at.isoformat(),
                 "language": article.language,
@@ -342,6 +344,7 @@ def _add_related_article_node(add_node: Any, article: Article, relation_hint: st
         "article",
         {
             "article_id": article.id,
+            "display_label": _article_display_label(article),
             "source_name": article.source.name if article.source else "unknown",
             "published_at": article.published_at.isoformat(),
             "language": article.language,
@@ -458,6 +461,14 @@ def _article_density_data(article: Article) -> dict[str, Any]:
         "entity_count": entity_count,
         "relation_count": relation_count,
     }
+
+
+def _article_display_label(article: Article) -> str:
+    """Возвращает русскоязычную подпись для UI, если исходный заголовок не на русском."""
+
+    if article.language == "ru" or article.analysis is None:
+        return article.title
+    return article.analysis.short_summary or article.title
 
 
 def _looks_like_same_source_duplicate(base_article: Article, related_article: Article) -> bool:

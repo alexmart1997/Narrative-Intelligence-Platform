@@ -11,7 +11,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  padding: 16px 22px;
+  padding: 14px 22px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.18);
   background: rgba(6, 8, 10, 0.88);
   backdrop-filter: blur(18px);
@@ -95,7 +95,7 @@
 
 .shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1fr) 300px;
   min-height: 0;
 }
 
@@ -149,17 +149,17 @@
 .nodeLabel {
   position: absolute;
   display: grid;
-  min-width: 118px;
-  max-width: 240px;
+  min-width: 106px;
+  max-width: 210px;
   gap: 3px;
-  padding: 7px 9px;
+  padding: 6px 8px;
   border: 1px solid rgba(125, 211, 252, 0.22);
   border-left: 3px solid #67e8f9;
   border-radius: 8px;
-  background: rgba(3, 7, 18, 0.78);
+  background: rgba(3, 7, 18, 0.72);
   box-shadow: 0 14px 34px rgb(0 0 0 / 36%);
   color: #e2e8f0;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.25;
   text-shadow: 0 1px 0 rgb(0 0 0 / 42%);
   transition: opacity 160ms ease;
@@ -183,7 +183,7 @@
 
 .nodeLabel strong {
   color: #f8fafc;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 850;
 }
 
@@ -239,7 +239,7 @@
 }
 
 .modeBar {
-  top: 76px;
+  top: 58px;
   left: 18px;
   display: flex;
   flex-wrap: wrap;
@@ -267,12 +267,12 @@
 }
 
 .filterPanel {
-  top: 130px;
+  top: 108px;
   left: 18px;
   display: grid;
   gap: 8px;
-  width: 190px;
-  padding: 12px;
+  width: 176px;
+  padding: 10px;
   color: #cbd5e1;
   font-size: 11px;
   font-weight: 800;
@@ -308,8 +308,8 @@
   display: flex;
   max-width: min(780px, calc(100% - 36px));
   flex-wrap: wrap;
-  gap: 7px;
-  padding: 8px;
+  gap: 5px;
+  padding: 6px;
 }
 
 .legend span,
@@ -387,9 +387,7 @@
 }
 
 .sceneMeta {
-  top: 18px;
-  right: 18px;
-  display: grid;
+  display: none;
   gap: 4px;
   max-width: 340px;
   padding: 12px 14px;
@@ -400,9 +398,7 @@
 }
 
 .routeGuide {
-  right: 18px;
-  bottom: 18px;
-  display: grid;
+  display: none;
   gap: 8px;
   max-width: 340px;
   padding: 12px 14px;
@@ -478,7 +474,7 @@
 
 .insight {
   right: 18px;
-  bottom: 132px;
+  bottom: 18px;
   max-width: 360px;
   padding: 12px 14px;
   color: #cbd5e1;
@@ -506,7 +502,7 @@
 
 .detailPanel {
   min-height: calc(100vh - 85px);
-  padding: 22px;
+  padding: 18px;
   border-left: 1px solid rgba(148, 163, 184, 0.16);
   background:
     radial-gradient(circle at top right, rgba(56, 189, 248, 0.1), transparent 28%),
@@ -520,7 +516,7 @@
 }
 
 .readingGuide {
-  display: grid;
+  display: none;
   gap: 8px;
   margin-bottom: 20px;
   padding: 12px;

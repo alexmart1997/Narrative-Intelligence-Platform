@@ -771,6 +771,126 @@
   text-transform: uppercase;
 }
 
+/* Спокойный режим: меньше визуального шума на основном dashboard. */
+.page {
+  padding: 24px;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(56, 189, 248, 0.11), transparent 28%),
+    linear-gradient(180deg, #080b10 0%, #05070a 100%);
+}
+
+.commandBar {
+  grid-template-columns: minmax(280px, 1fr) minmax(360px, 520px);
+}
+
+.densitySwitch {
+  display: none;
+}
+
+.brandBlock h1 {
+  font-size: clamp(28px, 3.2vw, 44px);
+  letter-spacing: -0.035em;
+}
+
+.brandBlock span {
+  max-width: 560px;
+}
+
+.metricsGrid {
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.metricCard {
+  padding: 12px;
+  border-radius: 16px;
+  box-shadow: none;
+}
+
+.metricIcon {
+  width: 28px;
+  height: 28px;
+  margin-bottom: 10px;
+}
+
+.metricCard strong {
+  font-size: 22px;
+}
+
+.timelinePanel {
+  grid-template-columns: 220px minmax(180px, 1fr);
+  padding: 12px 14px;
+  border-radius: 16px;
+  box-shadow: none;
+}
+
+.timelineBars {
+  min-height: 42px;
+}
+
+.filterBar {
+  grid-template-columns: repeat(4, minmax(120px, 1fr)) minmax(180px, 1.2fr) auto auto;
+  box-shadow: none;
+}
+
+.filterBar label:nth-of-type(5),
+.filterBar label:nth-of-type(6),
+.filterBar label:nth-of-type(7) {
+  display: none;
+}
+
+.dashboardGrid {
+  grid-template-columns: minmax(0, 1fr) 310px;
+}
+
+.articleCard {
+  padding: 16px;
+  border-radius: 18px;
+  box-shadow: none;
+}
+
+.articleCard:hover,
+.insightCard:hover,
+.metricCard:hover {
+  transform: none;
+  box-shadow: 0 18px 54px rgba(8, 47, 73, 0.18);
+}
+
+.articleCard h3 {
+  font-size: 20px;
+}
+
+.summary {
+  max-width: 860px;
+}
+
+.density_comfortable .analysisGrid,
+.density_compact .analysisGrid {
+  display: none;
+}
+
+.entityRow span:nth-child(n+4) {
+  display: none;
+}
+
+.cardActions {
+  margin-top: 14px;
+}
+
+.cardActions button {
+  min-height: 34px;
+}
+
+.insightPanel {
+  gap: 12px;
+}
+
+.insightCard {
+  padding: 14px;
+  border-radius: 18px;
+  box-shadow: none;
+}
+
 @keyframes shimmer {
   from {
     background-position: 220% 0;
