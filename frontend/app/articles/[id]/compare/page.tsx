@@ -16,6 +16,7 @@ type ArticleBrief = {
   russianTitle: string;
   originalTitle: string;
   originalUrl: string | null;
+  summary: string | null;
   sourceName: string;
 };
 
@@ -66,6 +67,7 @@ export default function ComparePage() {
                   russianTitle: `Статья ${item.article_id}`,
                   originalTitle: `Article ${item.article_id}`,
                   originalUrl: null,
+                  summary: null,
                   sourceName: `Source ${item.article_id}`
                 }
           }))
@@ -93,7 +95,7 @@ export default function ComparePage() {
             Назад к статьям
           </Link>
           <p className={styles.eyebrow}>Сравнение освещения</p>
-          <h1>{sourceArticle ? getRussianLead(sourceArticle, cards[0]?.item.comparison.source_1_framing) : `Статья ${params.id}`}</h1>
+          <h1>{sourceArticle ? getArticleTitle(sourceArticle) : `Статья ${params.id}`}</h1>
         </div>
         <button className={styles.primaryButton} onClick={() => router.push(`/articles/${articleId}/graph`)}>
           Открыть граф
@@ -191,7 +193,7 @@ function SourceColumn({
   title: string;
 }) {
   const [showOriginal, setShowOriginal] = useState(false);
-  const russianLead = getRussianLead(article, framing);
+  const russianLead = getArticleTitle(article);
   const hasOriginal = Boolean(article.originalTitle.trim());
   const leadText = showOriginal ? article.originalTitle : russianLead;
 
@@ -214,6 +216,7 @@ function SourceColumn({
         </div>
       </div>
       <p className={styles.articleTitle}>{leadText}</p>
+      {!showOriginal && article.summary ? <p className={styles.articleSummary}>{article.summary}</p> : null}
       {showOriginal && article.originalUrl ? (
         <a className={styles.originalLink} href={article.originalUrl} rel="noreferrer" target="_blank">
           Открыть публикацию источника
@@ -231,7 +234,7 @@ function Metric({ label, tone, value }: { label: string; tone: string; value: nu
     <div className={styles.metric}>
       <span>{label}</span>
       <strong>{formatPercent(value)}</strong>
-      <em className={`${styles.badge} ${styles[tone]}`}>{tone}</em>
+      <em className={`${styles.badge} ${styles[tone]}`}>{metricToneLabel(tone)}</em>
     </div>
   );
 }
@@ -243,7 +246,7 @@ function InfoBlock({ label, tone, value }: { label: string; tone?: string; value
     <div className={styles.infoBlock}>
       <span>
         {label}
-        {tone ? <em className={`${styles.smallBadge} ${styles[tone]}`}>{tone}</em> : null}
+        {tone ? <em className={`${styles.smallBadge} ${styles[tone]}`}>{analysisToneLabel(label, tone)}</em> : null}
       </span>
       <p>{displayValue || "Не указано"}</p>
     </div>
@@ -275,12 +278,14 @@ function graphToBrief(articleId: number, graph: ArticleGraphResponse): ArticleBr
   const displayLabel = graphNodeDisplayLabel(article);
   const originalLabel = article?.label?.trim() ?? "";
   const originalUrl = graphNodeString(article, "url");
+  const summary = getDisplaySummary(displayLabel, originalLabel);
 
   return {
     id: articleId,
-    russianTitle: displayLabel || originalLabel || `Статья ${articleId}`,
+    russianTitle: translateHeadline(originalLabel || displayLabel || `Статья ${articleId}`),
     originalTitle: originalLabel || displayLabel || `Article ${articleId}`,
     originalUrl,
+    summary,
     sourceName: source?.label ?? `Source ${articleId}`
   };
 }
@@ -296,18 +301,49 @@ function graphNodeString(node: ArticleGraphResponse["nodes"][number] | undefined
   return typeof value === "string" && value.trim() ? value : null;
 }
 
-function getRussianLead(article: ArticleBrief, russianFallback: string | undefined) {
-  const title = article.russianTitle.trim();
-  if (title && hasCyrillic(title)) return title;
+function getArticleTitle(article: ArticleBrief) {
+  return article.russianTitle.trim() || article.originalTitle || `Статья ${article.id}`;
+}
 
-  const fallback = russianFallback?.trim() ?? "";
-  if (fallback && hasCyrillic(fallback)) return fallback;
+function getDisplaySummary(displayLabel: string, originalLabel: string) {
+  const label = displayLabel.trim();
+  if (!label || label === originalLabel) return null;
+  if (!isLikelySummary(label)) return null;
+  if (!hasCyrillic(label)) return null;
+  return normalizeRussianText(label);
+}
 
-  return title || article.originalTitle || `Статья ${article.id}`;
+function isLikelySummary(value: string) {
+  return value.length > 140 || value.split(".").length > 2;
 }
 
 function hasCyrillic(value: string) {
   return /[А-Яа-яЁё]/.test(value);
+}
+
+function translateHeadline(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (hasCyrillic(trimmed)) return trimmed;
+
+  const exactTranslations: Array<[RegExp, string]> = [
+    [
+      /^Trump says Iran deal 'largely negotiated' including reopening Strait of Hormuz$/i,
+      "Трамп заявил, что сделка с Ираном «в основном согласована» и включает открытие Ормузского пролива"
+    ],
+    [
+      /^Live updates: Iran peace deal and Strait of Hormuz agreement ‘still a work in progress,’ says Rubio \| CNN$/i,
+      "Рубио заявил, что мирное соглашение с Ираном и договоренность по Ормузскому проливу еще прорабатываются"
+    ],
+    [
+      /^Live updates: Iran peace deal and Strait of Hormuz agreement 'still a work in progress,' says Rubio \| CNN$/i,
+      "Рубио заявил, что мирное соглашение с Ираном и договоренность по Ормузскому проливу еще прорабатываются"
+    ]
+  ];
+  const exact = exactTranslations.find(([pattern]) => pattern.test(trimmed));
+  if (exact) return exact[1];
+
+  return normalizeRussianText(trimmed);
 }
 
 function normalizeRussianText(value: string) {
@@ -352,6 +388,19 @@ function probabilityTone(value: number) {
   if (value >= 0.7) return "positive";
   if (value <= 0.4) return "negative";
   return "neutral";
+}
+
+function metricToneLabel(tone: string) {
+  if (tone === "positive") return "высокое";
+  if (tone === "negative") return "низкое";
+  return "среднее";
+}
+
+function analysisToneLabel(label: string, tone: string) {
+  if (tone === "neutral") return "нет";
+  if (label.toLowerCase().includes("крит")) return "критика";
+  if (label.toLowerCase().includes("симпат")) return "симпатия";
+  return tone === "negative" ? "негатив" : "позитив";
 }
 
 function hasStrongDivergence(sameEventProbability: number, factOverlap: number) {

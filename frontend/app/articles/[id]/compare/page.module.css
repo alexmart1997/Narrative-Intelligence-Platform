@@ -260,6 +260,13 @@
   line-height: 1.35;
 }
 
+.articleSummary {
+  margin: -2px 0 0;
+  color: #8fa1b8;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
 .originalLink {
   width: fit-content;
   color: #7dd3fc;
