@@ -13,6 +13,7 @@
 .jobsPanel,
 .timelinePanel,
 .filterBar,
+.feedShell,
 .dashboardGrid,
 .notice,
 .errorState {
@@ -410,7 +411,7 @@
 
 .filterBar {
   display: grid;
-  grid-template-columns: repeat(7, minmax(112px, 1fr)) minmax(190px, 1.4fr) auto auto;
+  grid-template-columns: repeat(5, minmax(112px, 1fr)) minmax(190px, 1.4fr) auto auto;
   gap: 10px;
   align-items: flex-end;
   margin-bottom: 18px;
@@ -461,6 +462,10 @@
   grid-template-columns: minmax(0, 1fr) 360px;
   gap: 18px;
   align-items: start;
+}
+
+.feedShell {
+  margin-bottom: 24px;
 }
 
 .feed {
@@ -1004,14 +1009,8 @@
 }
 
 .filterBar {
-  grid-template-columns: repeat(4, minmax(120px, 1fr)) minmax(180px, 1.2fr) auto auto;
+  grid-template-columns: repeat(5, minmax(120px, 1fr)) minmax(180px, 1.2fr) auto auto;
   box-shadow: none;
-}
-
-.filterBar label:nth-of-type(5),
-.filterBar label:nth-of-type(6),
-.filterBar label:nth-of-type(7) {
-  display: none;
 }
 
 .dashboardGrid {

@@ -227,11 +227,27 @@ def _save_article(db: Session, source: Source, article: ParsedArticle) -> Articl
         published_at=article.published_at,
         text=article.text,
         language=article.language,
-        section=article.section,
-        author=article.author,
+        section=_truncate(article.section, 120),
+        author=_truncate(article.author, 255),
         material_type=MaterialType(article.material_type.value),
     )
     db.add(model)
     db.commit()
     db.refresh(model)
     return model
+
+
+def _truncate(value: str | None, max_length: int) -> str | None:
+    """Обрезает метаданные под размер колонок БД.
+
+    Некоторые сайты, особенно live pages CNN, отдают десятки авторов одной
+    строкой. Для MVP важнее сохранить материал, чем потерять его из-за
+    слишком длинного metadata-поля.
+    """
+
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    return cleaned[:max_length]

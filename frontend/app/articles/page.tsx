@@ -1,40 +1,28 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArticleAnalysisResponse,
   ArticleListItem,
-  JobResponse,
   SimilarArticleItem,
   SourceInfo,
-  cancelJob,
   getArticleAnalysis,
   getArticles,
-  getJobs,
   getSimilarArticles,
-  getSources,
-  startAnalyzeJob,
-  startPipelineJob
+  getSources
 } from "@/lib/api";
 import styles from "./page.module.css";
 
 type ActionState = {
   articleId: number;
-  action: ArticleAction;
+  action: "similar";
 } | null;
-
-type ArticleAction = "analysis" | "analyze" | "compare" | "graph" | "similar";
-type DensityMode = "compact" | "comfortable" | "analyst";
-type StatusFilter = "" | "analyzed" | "not_analyzed";
-type GlobalAction = "precompute" | null;
 
 type AnalysisMap = Record<number, ArticleAnalysisResponse | null>;
 
 const languages = ["ru", "en"];
 const materialTypes = ["news", "article", "analytics", "opinion", "interview", "unknown"];
-const sentiments = ["positive", "negative", "neutral", "mixed"];
 
 export default function ArticlesPage() {
   return (
@@ -53,52 +41,18 @@ function ArticlesContent() {
   const [sourceCode, setSourceCode] = useState("");
   const [language, setLanguage] = useState("");
   const [materialType, setMaterialType] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("");
-  const [sentimentFilter, setSentimentFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
-  const [density, setDensity] = useState<DensityMode>("comfortable");
   const [showPalette, setShowPalette] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [globalAction, setGlobalAction] = useState<GlobalAction>(null);
   const [actionState, setActionState] = useState<ActionState>(null);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [noticeByArticle, setNoticeByArticle] = useState<Record<number, string>>({});
   const [similarByArticle, setSimilarByArticle] = useState<Record<number, SimilarArticleItem[]>>({});
-  const [jobs, setJobs] = useState<JobResponse[]>([]);
-  const watchedJobIds = useRef<Set<number>>(new Set());
 
   const entityId = searchParams.get("entity_id") ?? "";
   const entityName = searchParams.get("entity_name") ?? "";
-
-  const visibleArticles = useMemo(() => {
-    return articles.filter((article) => {
-      const analysis = analysisByArticle[article.id];
-      if (statusFilter === "analyzed" && !article.has_analysis) return false;
-      if (statusFilter === "not_analyzed" && article.has_analysis) return false;
-      if (sentimentFilter && analysis?.sentiment !== sentimentFilter) return false;
-      return true;
-    });
-  }, [analysisByArticle, articles, sentimentFilter, statusFilter]);
-
-  const metrics = useMemo(() => buildMetrics(visibleArticles, analysisByArticle), [
-    analysisByArticle,
-    visibleArticles
-  ]);
-  const timeline = useMemo(() => buildTimeline(visibleArticles), [visibleArticles]);
-  const sourceMix = useMemo(() => topCounts(visibleArticles.map((article) => article.source_name), 5), [visibleArticles]);
-  const topNarrativeHypotheses = useMemo(() => {
-    return topCounts(
-      visibleArticles
-        .map((article) => analysisByArticle[article.id]?.narrative_hypothesis)
-        .filter(Boolean) as string[],
-      5
-    );
-  }, [analysisByArticle, visibleArticles]);
-  const spotlight = useMemo(() => pickSpotlight(visibleArticles), [visibleArticles]);
-  const jobByArticleId = useMemo(() => latestJobByArticle(jobs), [jobs]);
+  const visibleArticles = useMemo(() => articles, [articles]);
 
   async function loadArticles() {
     setLoading(true);
@@ -135,7 +89,7 @@ function ArticlesContent() {
       return;
     }
 
-    // Анализы загружаем отдельно и не считаем ошибкой, если часть статей еще не имеет evidence/analysis.
+    // Анализ нужен для русских summaries, фрейминга, нарратива и сущностей в карточке.
     const results = await Promise.allSettled(
       analyzed.map(async (article) => [article.id, await getArticleAnalysis(article.id)] as const)
     );
@@ -166,68 +120,6 @@ function ArticlesContent() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  useEffect(() => {
-    refreshJobs();
-    const timer = window.setInterval(refreshJobs, 2500);
-    return () => window.clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const finishedJobs = jobs.filter((job) => isFinishedJob(job) && watchedJobIds.current.has(job.id));
-    if (finishedJobs.length === 0) return;
-
-    let shouldReload = false;
-    for (const job of finishedJobs) {
-      watchedJobIds.current.delete(job.id);
-      const articleId = getJobArticleId(job);
-      if (articleId && job.status === "completed") {
-        shouldReload = true;
-        setNoticeByArticle((current) => ({
-          ...current,
-          [articleId]: "Готово: фоновая задача завершила анализ и подготовку связей."
-        }));
-      }
-      if (job.status === "failed") {
-        setError(job.error || "Фоновая задача завершилась ошибкой");
-      }
-    }
-    if (shouldReload) {
-      loadArticles();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobs]);
-
-  async function refreshJobs() {
-    try {
-      const latestJobs = await getJobs();
-      setJobs(latestJobs);
-    } catch {
-      // Polling не должен ломать страницу статей, если backend временно перезапускается.
-    }
-  }
-
-  async function handleAnalyze(articleId: number) {
-    setActionState({ articleId, action: "analyze" });
-    setActionMessage("Ставлю анализ в фоновую очередь...");
-    setError(null);
-    setNoticeByArticle((current) => ({ ...current, [articleId]: "" }));
-    try {
-      const job = await startAnalyzeJob(articleId);
-      watchedJobIds.current.add(job.id);
-      setJobs((current) => upsertJob(current, job));
-      setNoticeByArticle((current) => ({
-        ...current,
-        [articleId]: `Задача #${job.id} запущена. Можно продолжать работу, анализ идет в фоне.`
-      }));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Не удалось поставить анализ в очередь");
-    } finally {
-      setActionState(null);
-      setActionMessage(null);
-    }
-  }
-
   async function handleFindSimilar(articleId: number) {
     setActionState({ articleId, action: "similar" });
     setError(null);
@@ -241,108 +133,28 @@ function ArticlesContent() {
     }
   }
 
-  async function handlePrecompute() {
-    setGlobalAction("precompute");
-    setError(null);
-    setActionMessage("Ставлю подготовку похожих, графов и сравнений в фон...");
-    try {
-      const job = await startPipelineJob({
-        dateFrom,
-        dateTo,
-        sourceCode,
-        language,
-        limit: 100,
-        onlyWithAnalysis: true,
-        steps: ["embed", "similar", "graph_precompute", "compare_precompute"]
-      });
-      watchedJobIds.current.add(job.id);
-      setJobs((current) => upsertJob(current, job));
-      setActionMessage(`Задача #${job.id} запущена. UI будет обновлять прогресс автоматически.`);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Не удалось поставить precompute в очередь");
-    } finally {
-      setGlobalAction(null);
-    }
-  }
-
-  async function handleCancelJob(jobId: number) {
-    try {
-      const job = await cancelJob(jobId);
-      setJobs((current) => upsertJob(current, job));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Не удалось отменить задачу");
-    }
-  }
-
   function resetFilters() {
     setSourceCode("");
     setLanguage("");
     setMaterialType("");
-    setStatusFilter("");
-    setSentimentFilter("");
     setDateFrom("");
     setDateTo("");
     setQuery("");
   }
 
   return (
-    <main className={`${styles.page} ${styles[`density_${density}`]}`}>
+    <main className={styles.page}>
       <section className={styles.commandBar}>
         <div className={styles.brandBlock}>
           <p className={styles.eyebrow}>Narrative Intelligence Platform</p>
           <h1>Articles</h1>
-          <span>Сфокусированный рабочий поток: анализ статьи, подбор похожих, граф связей и сравнение освещения.</span>
+          <span>Поиск, фильтрация и переходы к ключевым сценариям: похожие материалы, граф связей, сравнение и доказательства.</span>
         </div>
         <div className={styles.commandSearch}>
           <button className={styles.searchShell} onClick={() => setShowPalette(true)}>
             <span>Поиск по статьям, участникам, фреймам и темам...</span>
             <kbd>Cmd K</kbd>
           </button>
-          <div className={styles.quickActions}>
-            <button onClick={handlePrecompute} disabled={globalAction !== null}>
-              {globalAction === "precompute" ? "Ставлю..." : "Подготовить похожие, графы и сравнения"}
-            </button>
-          </div>
-        </div>
-        <div className={styles.densitySwitch} aria-label="Density switch">
-          {(["compact", "comfortable", "analyst"] as DensityMode[]).map((item) => (
-            <button
-              key={item}
-              className={density === item ? styles.activeDensity : ""}
-              onClick={() => setDensity(item)}
-            >
-              {capitalize(item)}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className={styles.metricsGrid}>
-        {metrics.map((metric) => (
-          <div className={styles.metricCard} key={metric.label}>
-            <span className={styles.metricIcon}>{metric.icon}</span>
-            <p>{metric.label}</p>
-            <strong>{metric.value}</strong>
-            <small>{metric.trend}</small>
-          </div>
-        ))}
-      </section>
-
-      {jobs.length > 0 ? <JobsPanel jobs={jobs.slice(0, 6)} onCancel={handleCancelJob} /> : null}
-
-      <section className={styles.timelinePanel}>
-        <div>
-          <p className={styles.panelKicker}>Timeline</p>
-          <h2>Публикации по дням</h2>
-        </div>
-        <div className={styles.timelineBars}>
-          {timeline.length > 0 ? timeline.map((item) => (
-            <span
-              key={item.day}
-              title={`${item.day}: ${item.count}`}
-              style={{ height: `${Math.max(12, item.height)}%` }}
-            />
-          )) : <p>Пока нет данных</p>}
         </div>
       </section>
 
@@ -378,21 +190,6 @@ function ArticlesContent() {
             {materialTypes.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </label>
-        <label>
-          Статус
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
-            <option value="">Все</option>
-            <option value="analyzed">Проанализировано</option>
-            <option value="not_analyzed">Без анализа</option>
-          </select>
-        </label>
-        <label>
-          Тональность
-          <select value={sentimentFilter} onChange={(event) => setSentimentFilter(event.target.value)}>
-            <option value="">Все</option>
-            {sentiments.map((item) => <option key={item} value={item}>{item}</option>)}
-          </select>
-        </label>
         <label className={styles.queryFilter}>
           Поиск
           <input
@@ -408,25 +205,24 @@ function ArticlesContent() {
       {error ? (
         <div className={styles.errorState}>
           <strong>{error}</strong>
-          <button onClick={loadArticles}>Retry</button>
+          <button onClick={loadArticles}>Повторить</button>
         </div>
       ) : null}
       {entityId || entityName ? (
         <div className={styles.notice}>
-          Entity focus: <strong>{entityName || `ID ${entityId}`}</strong>
-          <button onClick={() => router.push("/articles")}>Clear</button>
+          Фокус по сущности: <strong>{entityName || `ID ${entityId}`}</strong>
+          <button onClick={() => router.push("/articles")}>Очистить</button>
         </div>
       ) : null}
-      {actionMessage ? <div className={styles.notice}>{actionMessage}</div> : null}
 
-      <section className={styles.dashboardGrid}>
+      <section className={styles.feedShell}>
         <section className={styles.feed}>
           <div className={styles.sectionHeader}>
             <div>
-              <p className={styles.panelKicker}>Intelligence Feed</p>
-              <h2>Лента материалов</h2>
+              <p className={styles.panelKicker}>Articles</p>
+              <h2>Материалы</h2>
             </div>
-            <span>{visibleArticles.length} видно</span>
+            <span>{visibleArticles.length} в ленте</span>
           </div>
 
           {loading ? (
@@ -440,9 +236,6 @@ function ArticlesContent() {
                 actionState={actionState}
                 analysis={analysisByArticle[article.id] ?? null}
                 article={article}
-                job={jobByArticleId.get(article.id)}
-                notice={noticeByArticle[article.id]}
-                onAnalyze={handleAnalyze}
                 onCompare={(id) => router.push(`/articles/${id}/compare`)}
                 onEvidence={(id) => router.push(`/articles/${id}/analysis`)}
                 onGraph={(id) => router.push(`/articles/${id}/graph`)}
@@ -452,51 +245,6 @@ function ArticlesContent() {
             ))
           )}
         </section>
-
-        <aside className={styles.insightPanel}>
-          <InsightCard title="Текущий материал" kicker="Рабочий фокус">
-            {spotlight ? (
-              <>
-                <strong>{spotlight.title}</strong>
-                <p>{spotlight.source_name} · {formatDate(spotlight.published_at)}</p>
-                <span className={spotlight.has_analysis ? styles.positiveBadge : styles.neutralBadge}>
-                  {spotlight.has_analysis ? "готов к графу и сравнению" : "нужен анализ"}
-                </span>
-              </>
-            ) : <EmptyMini label="Нет материала в текущем фильтре" />}
-          </InsightCard>
-
-          <InsightCard title="Нарративные гипотезы" kicker="Из анализа статей">
-            {topNarrativeHypotheses.length > 0 ? (
-              <div className={styles.rankList}>
-                {topNarrativeHypotheses.map((item) => (
-                  <span key={item.label}><b>{item.count}</b>{truncate(item.label, 82)}</span>
-                ))}
-              </div>
-            ) : <EmptyMini label="Появятся после анализа статей" />}
-          </InsightCard>
-
-          <InsightCard title="Источники" kicker="Распределение в ленте">
-            {sourceMix.length > 0 ? (
-              <div className={styles.sourceMix}>
-                {sourceMix.map((item) => (
-                  <div key={item.label}>
-                    <span>{item.label}</span>
-                    <i style={{ width: `${Math.max(8, item.percent)}%` }} />
-                    <b>{item.count}</b>
-                  </div>
-                ))}
-              </div>
-            ) : <EmptyMini label="Нет источников в текущем фильтре" />}
-          </InsightCard>
-
-          <InsightCard title="Сигнал системы" kicker="AI insight">
-            <div className={styles.callout}>
-              <strong>{buildAiInsight(visibleArticles, analysisByArticle)}</strong>
-              <p>Основные действия MVP: анализ, похожие материалы, граф связей и сравнение освещения.</p>
-            </div>
-          </InsightCard>
-        </aside>
       </section>
 
       {showPalette ? (
@@ -519,9 +267,6 @@ function ArticleCard({
   actionState,
   analysis,
   article,
-  job,
-  notice,
-  onAnalyze,
   onCompare,
   onEvidence,
   onGraph,
@@ -531,18 +276,16 @@ function ArticleCard({
   actionState: ActionState;
   analysis: ArticleAnalysisResponse | null;
   article: ArticleListItem;
-  job?: JobResponse;
-  notice?: string;
-  onAnalyze: (articleId: number) => void;
   onCompare: (articleId: number) => void;
   onEvidence: (articleId: number) => void;
   onGraph: (articleId: number) => void;
   onSimilar: (articleId: number) => void;
   similar?: SimilarArticleItem[];
 }) {
-  const jobBusy = job ? isActiveJob(job) : false;
-  const busy = actionState !== null || jobBusy;
+  const busy = actionState?.articleId === article.id;
   const entities = analysis?.entities.slice(0, 5) ?? [];
+  const canOpenIntelligence = article.has_analysis;
+
   return (
     <article className={styles.articleCard}>
       <div className={styles.cardTopline}>
@@ -550,38 +293,36 @@ function ArticleCard({
         <span>{formatDate(article.published_at)}</span>
         <span>{article.language}</span>
         <span>{article.material_type}</span>
-        <span className={article.has_analysis ? styles.positiveBadge : styles.warningBadge}>
-          {articleReadinessLabel(article)}
-        </span>
       </div>
 
       <h3>{localizedArticleTitle(article, analysis)}</h3>
       <p className={styles.summary}>{localizedArticleSummary(article, analysis)}</p>
 
-      <div className={styles.analysisGrid}>
-        <InfoPill label="Тональность" value={analysis?.sentiment ?? "—"} tone={analysis?.sentiment ?? "neutral"} />
-        <InfoPill label="Фрейминг" value={analysis?.framing ?? "Фрейминг появится после анализа"} />
-        <InfoPill label="Нарратив" value={analysis?.narrative_hypothesis ?? "Запусти анализ, чтобы получить нарратив"} />
-      </div>
+      {analysis ? (
+        <div className={styles.analysisGrid}>
+          <InfoPill label="Тональность" value={analysis.sentiment} tone={analysis.sentiment} />
+          <InfoPill label="Фрейминг" value={analysis.framing} />
+          <InfoPill label="Нарратив" value={analysis.narrative_hypothesis} />
+        </div>
+      ) : null}
 
-      <div className={styles.entityRow}>
-        {entities.length > 0 ? entities.map((entity) => (
-          <span key={entity.id}>{entity.name}</span>
-        )) : <span className={styles.mutedChip}>сущности ожидают анализа</span>}
-      </div>
+      {entities.length > 0 ? (
+        <div className={styles.entityRow}>
+          {entities.map((entity) => (
+            <span key={entity.id}>{entity.name}</span>
+          ))}
+        </div>
+      ) : null}
 
       <div className={styles.cardActions}>
-        <button onClick={() => onAnalyze(article.id)} disabled={busy}>
-          {jobBusy ? "В фоне..." : actionState?.articleId === article.id && actionState.action === "analyze" ? "Старт..." : "Анализ"}
+        <button onClick={() => onSimilar(article.id)} disabled={busy || !canOpenIntelligence}>
+          {busy ? "Ищу..." : "Похожие"}
         </button>
-        <button onClick={() => onSimilar(article.id)} disabled={busy || !article.has_analysis}>Похожие</button>
-        <button onClick={() => onGraph(article.id)} disabled={busy || !article.has_analysis}>Граф</button>
-        <button onClick={() => onCompare(article.id)} disabled={busy || !article.has_analysis}>Сравнить</button>
-        <button onClick={() => onEvidence(article.id)} disabled={busy || !article.has_analysis}>Доказательства</button>
+        <button onClick={() => onGraph(article.id)} disabled={!canOpenIntelligence}>Граф</button>
+        <button onClick={() => onCompare(article.id)} disabled={!canOpenIntelligence}>Сравнить</button>
+        <button onClick={() => onEvidence(article.id)} disabled={!canOpenIntelligence}>Доказательства</button>
       </div>
 
-      {job ? <JobProgress job={job} compact /> : null}
-      {notice ? <div className={styles.successState}>{notice}</div> : null}
       {similar ? (
         <div className={styles.similarBox}>
           <strong>Похожие материалы</strong>
@@ -596,54 +337,15 @@ function ArticleCard({
               <strong>{item.source_name} · {truncate(item.title, 92)}</strong>
               <p>{item.similarity_reason}</p>
               <small>
-                Why similar?
-                {item.shared_entities.length > 0 ? ` Shared entities: ${item.shared_entities.slice(0, 4).join(", ")}.` : ""}
-                {item.shared_keywords.length > 0 ? ` Shared keywords: ${item.shared_keywords.slice(0, 5).join(", ")}.` : ""}
+                Почему похоже?
+                {item.shared_entities.length > 0 ? ` Общие участники: ${item.shared_entities.slice(0, 4).join(", ")}.` : ""}
+                {item.shared_keywords.length > 0 ? ` Общие ключевые слова: ${item.shared_keywords.slice(0, 5).join(", ")}.` : ""}
               </small>
             </article>
           ))}
         </div>
       ) : null}
     </article>
-  );
-}
-
-function JobsPanel({ jobs, onCancel }: { jobs: JobResponse[]; onCancel: (jobId: number) => void }) {
-  return (
-    <section className={styles.jobsPanel}>
-      <div>
-        <p className={styles.panelKicker}>Background jobs</p>
-        <h2>Фоновые задачи</h2>
-      </div>
-      <div className={styles.jobsList}>
-        {jobs.map((job) => (
-          <article key={job.id} className={styles.jobItem}>
-            <div className={styles.jobTopline}>
-              <strong>#{job.id} · {translateJobType(job.type)}</strong>
-              <span className={`${styles.statusBadge} ${styles[`job_${job.status}`]}`}>{translateJobStatus(job.status)}</span>
-            </div>
-            <JobProgress job={job} />
-            <small>{latestJobMessage(job)}</small>
-            {isActiveJob(job) ? <button onClick={() => onCancel(job.id)}>Отменить</button> : null}
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function JobProgress({ compact = false, job }: { compact?: boolean; job: JobResponse }) {
-  return (
-    <div className={`${styles.jobProgress} ${compact ? styles.compactJobProgress : ""}`}>
-      <div>
-        <span>{translateJobType(job.type)}</span>
-        <b>{Math.round(job.progress * 100)}%</b>
-      </div>
-      <i>
-        <em style={{ width: `${Math.max(4, Math.round(job.progress * 100))}%` }} />
-      </i>
-      <small>{latestJobMessage(job)}</small>
-    </div>
   );
 }
 
@@ -664,20 +366,6 @@ function localizedArticleTitle(article: ArticleListItem, analysis: ArticleAnalys
 function localizedArticleSummary(article: ArticleListItem, analysis: ArticleAnalysisResponse | null) {
   if (article.language === "ru") return analysis?.short_summary || article.text_preview || "Нет краткого описания.";
   return analysis?.detailed_summary || analysis?.short_summary || article.text_preview || "Русский перевод появится после анализа.";
-}
-
-function InsightCard({ children, kicker, title }: { children: ReactNode; kicker: string; title: string }) {
-  return (
-    <section className={styles.insightCard}>
-      <p className={styles.panelKicker}>{kicker}</p>
-      <h3>{title}</h3>
-      {children}
-    </section>
-  );
-}
-
-function EmptyMini({ label }: { label: string }) {
-  return <p className={styles.emptyMini}>{label}</p>;
 }
 
 function CommandPalette({
@@ -721,7 +409,7 @@ function CommandPalette({
           {matches.map((article) => (
             <button key={article.id} onClick={() => onNavigate(`/articles/${article.id}/graph`)}>
               <span>{article.source_name}</span>
-              <strong>{article.title}</strong>
+              <strong>{localizedArticleTitle(article, null)}</strong>
             </button>
           ))}
         </div>
@@ -792,135 +480,6 @@ function articleDedupeKey(item: ArticleListItem) {
   }
 }
 
-function buildMetrics(
-  articles: ArticleListItem[],
-  analysisByArticle: AnalysisMap
-) {
-  const analyzed = articles.filter((article) => article.has_analysis).length;
-  const unprocessed = articles.length - analyzed;
-  const avgConfidence = average(
-    Object.values(analysisByArticle)
-      .map((analysis) => analysis?.confidence)
-      .filter((value): value is number => typeof value === "number")
-  );
-  return [
-    { icon: "AR", label: "Статьи", value: articles.length.toString(), trend: "в текущем фильтре" },
-    { icon: "AI", label: "Анализ", value: analyzed.toString(), trend: "готово для работы" },
-    { icon: "SM", label: "Похожие", value: analyzed.toString(), trend: "можно искать связи" },
-    { icon: "GR", label: "Графы", value: analyzed.toString(), trend: "можно открыть 3D-граф" },
-    { icon: "NW", label: "Без анализа", value: unprocessed.toString(), trend: "нужно обработать" },
-    { icon: "CF", label: "Уверенность", value: Number.isFinite(avgConfidence) ? formatPercent(avgConfidence) : "—", trend: "средняя по анализу" }
-  ];
-}
-
-function buildTimeline(articles: ArticleListItem[]) {
-  const counts = new Map<string, number>();
-  for (const article of articles) {
-    const day = new Date(article.published_at).toISOString().slice(0, 10);
-    counts.set(day, (counts.get(day) ?? 0) + 1);
-  }
-  const max = Math.max(...Array.from(counts.values()), 0);
-  return Array.from(counts.entries())
-    .sort(([left], [right]) => left.localeCompare(right))
-    .slice(-18)
-    .map(([day, count]) => ({ day, count, height: max ? (count / max) * 100 : 0 }));
-}
-
-function topCounts(values: string[], limit: number) {
-  const counts = new Map<string, number>();
-  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
-  const max = Math.max(...Array.from(counts.values()), 1);
-  return Array.from(counts.entries())
-    .sort((left, right) => right[1] - left[1])
-    .slice(0, limit)
-    .map(([label, count]) => ({ label, count, percent: (count / max) * 100 }));
-}
-
-function pickSpotlight(articles: ArticleListItem[]) {
-  return [...articles].sort((left, right) => {
-    const analyzedDelta = Number(right.has_analysis) - Number(left.has_analysis);
-    if (analyzedDelta) return analyzedDelta;
-    return new Date(right.published_at).getTime() - new Date(left.published_at).getTime();
-  })[0];
-}
-
-function buildAiInsight(articles: ArticleListItem[], analysisByArticle: AnalysisMap) {
-  const sentiments = new Set(Object.values(analysisByArticle).map((analysis) => analysis?.sentiment).filter(Boolean));
-  const narratives = new Set(Object.values(analysisByArticle).map((analysis) => analysis?.narrative_hypothesis).filter(Boolean));
-  if (sentiments.size >= 3 || narratives.size >= 3) {
-    return "В текущей выборке заметны разные фреймы и нарративные гипотезы.";
-  }
-  if (articles.some((article) => !article.has_analysis)) {
-    return "Часть материалов еще нужно проанализировать, прежде чем сравнение будет надежным.";
-  }
-  return articles.length ? "Материалы готовы для поиска похожих, графа связей и сравнения." : "В текущем фильтре нет материалов.";
-}
-
-function articleReadinessLabel(article: ArticleListItem) {
-  return article.has_analysis ? "анализ готов" : "без анализа";
-}
-
-function latestJobByArticle(jobs: JobResponse[]) {
-  const result = new Map<number, JobResponse>();
-  for (const job of jobs) {
-    const articleId = getJobArticleId(job);
-    if (!articleId) continue;
-    const current = result.get(articleId);
-    if (!current || new Date(job.created_at).getTime() > new Date(current.created_at).getTime()) {
-      result.set(articleId, job);
-    }
-  }
-  return result;
-}
-
-function getJobArticleId(job: JobResponse) {
-  const raw = job.params.article_id;
-  return typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : null;
-}
-
-function isActiveJob(job: JobResponse) {
-  return job.status === "pending" || job.status === "running";
-}
-
-function isFinishedJob(job: JobResponse) {
-  return job.status === "completed" || job.status === "failed" || job.status === "cancelled";
-}
-
-function upsertJob(current: JobResponse[], job: JobResponse) {
-  const next = current.filter((item) => item.id !== job.id);
-  return [job, ...next].sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
-}
-
-function latestJobMessage(job: JobResponse) {
-  const latest = job.logs[job.logs.length - 1];
-  if (latest?.message) return latest.message;
-  if (job.error) return job.error;
-  return translateJobStatus(job.status);
-}
-
-function translateJobType(type: string) {
-  const labels: Record<string, string> = {
-    analyze: "анализ статьи",
-    embed: "embedding",
-    similar: "похожие",
-    graph_precompute: "граф",
-    compare_precompute: "сравнение",
-    pipeline: "pipeline"
-  };
-  return labels[type] ?? type;
-}
-
-function translateJobStatus(status: JobResponse["status"]) {
-  const labels: Record<JobResponse["status"], string> = {
-    pending: "в очереди",
-    running: "в работе",
-    completed: "готово",
-    failed: "ошибка",
-    cancelled: "отменено"
-  };
-  return labels[status];
-}
-
 function translateSimilarityClass(classification: SimilarArticleItem["classification"]) {
   const labels: Record<SimilarArticleItem["classification"], string> = {
     same_story: "тот же сюжет",
@@ -928,11 +487,6 @@ function translateSimilarityClass(classification: SimilarArticleItem["classifica
     not_related: "не связано"
   };
   return labels[classification];
-}
-
-function average(values: number[]) {
-  if (values.length === 0) return Number.NaN;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 function formatDate(value: string) {
@@ -945,14 +499,6 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-function formatPercent(value: number) {
-  return `${Math.round(value * 100)}%`;
-}
-
 function truncate(value: string, max: number) {
   return value.length > max ? `${value.slice(0, max - 3)}...` : value;
-}
-
-function capitalize(value: string) {
-  return value.slice(0, 1).toUpperCase() + value.slice(1);
 }
