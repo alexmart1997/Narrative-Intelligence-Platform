@@ -316,6 +316,37 @@ class PipelineRunResponse(BaseModel):
     result: Optional[PipelineProcessResponse]
 
 
+class JobAnalyzeRequest(BaseModel):
+    article_id: int = Field(..., ge=1)
+    include_compare: bool = False
+
+
+class JobPipelineRequest(BaseModel):
+    source_code: Optional[str] = None
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+    language: Optional[str] = None
+    only_without_analysis: bool = False
+    only_with_analysis: bool = False
+    limit: int = Field(default=100, ge=1, le=500)
+    steps: list[str] = Field(default_factory=lambda: ["analyze", "embed", "similar", "graph_precompute"])
+
+
+class JobResponse(BaseModel):
+    id: int
+    type: str
+    status: str
+    progress: float
+    params: dict
+    result: Optional[dict]
+    logs: list[dict]
+    error: Optional[str]
+    retry_count: int
+    created_at: datetime
+    started_at: Optional[datetime]
+    finished_at: Optional[datetime]
+
+
 class PrecomputeRequest(BaseModel):
     source_code: Optional[str] = None
     date_from: Optional[date] = None

@@ -1,21 +1,22 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArticleAnalysisResponse,
   ArticleListItem,
+  JobResponse,
   SimilarArticleItem,
   SourceInfo,
-  analyzeArticle,
-  detectArticleEvent,
-  embedArticle,
+  cancelJob,
   getArticleAnalysis,
   getArticles,
+  getJobs,
   getSimilarArticles,
   getSources,
-  precomputeIntelligence
+  startAnalyzeJob,
+  startPipelineJob
 } from "@/lib/api";
 import styles from "./page.module.css";
 
@@ -66,6 +67,8 @@ function ArticlesContent() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [noticeByArticle, setNoticeByArticle] = useState<Record<number, string>>({});
   const [similarByArticle, setSimilarByArticle] = useState<Record<number, SimilarArticleItem[]>>({});
+  const [jobs, setJobs] = useState<JobResponse[]>([]);
+  const watchedJobIds = useRef<Set<number>>(new Set());
 
   const entityId = searchParams.get("entity_id") ?? "";
   const entityName = searchParams.get("entity_name") ?? "";
@@ -95,6 +98,7 @@ function ArticlesContent() {
     );
   }, [analysisByArticle, visibleArticles]);
   const spotlight = useMemo(() => pickSpotlight(visibleArticles), [visibleArticles]);
+  const jobByArticleId = useMemo(() => latestJobByArticle(jobs), [jobs]);
 
   async function loadArticles() {
     setLoading(true);
@@ -162,24 +166,62 @@ function ArticlesContent() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  useEffect(() => {
+    refreshJobs();
+    const timer = window.setInterval(refreshJobs, 2500);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const finishedJobs = jobs.filter((job) => isFinishedJob(job) && watchedJobIds.current.has(job.id));
+    if (finishedJobs.length === 0) return;
+
+    let shouldReload = false;
+    for (const job of finishedJobs) {
+      watchedJobIds.current.delete(job.id);
+      const articleId = getJobArticleId(job);
+      if (articleId && job.status === "completed") {
+        shouldReload = true;
+        setNoticeByArticle((current) => ({
+          ...current,
+          [articleId]: "Готово: фоновая задача завершила анализ и подготовку связей."
+        }));
+      }
+      if (job.status === "failed") {
+        setError(job.error || "Фоновая задача завершилась ошибкой");
+      }
+    }
+    if (shouldReload) {
+      loadArticles();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobs]);
+
+  async function refreshJobs() {
+    try {
+      const latestJobs = await getJobs();
+      setJobs(latestJobs);
+    } catch {
+      // Polling не должен ломать страницу статей, если backend временно перезапускается.
+    }
+  }
+
   async function handleAnalyze(articleId: number) {
     setActionState({ articleId, action: "analyze" });
-    setActionMessage("Запускаю LLM-анализ статьи...");
+    setActionMessage("Ставлю анализ в фоновую очередь...");
     setError(null);
     setNoticeByArticle((current) => ({ ...current, [articleId]: "" }));
     try {
-      await analyzeArticle(articleId);
-      setActionMessage("Создаю embedding для поиска похожих материалов...");
-      await embedArticle(articleId);
-      setActionMessage("Готовлю служебные связи для графа...");
-      await detectArticleEvent(articleId);
-      await loadArticles();
+      const job = await startAnalyzeJob(articleId);
+      watchedJobIds.current.add(job.id);
+      setJobs((current) => upsertJob(current, job));
       setNoticeByArticle((current) => ({
         ...current,
-        [articleId]: "Готово: анализ, сущности, нарративная гипотеза, похожие материалы и граф обновлены."
+        [articleId]: `Задача #${job.id} запущена. Можно продолжать работу, анализ идет в фоне.`
       }));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Не удалось выполнить анализ");
+      setError(caught instanceof Error ? caught.message : "Не удалось поставить анализ в очередь");
     } finally {
       setActionState(null);
       setActionMessage(null);
@@ -202,20 +244,33 @@ function ArticlesContent() {
   async function handlePrecompute() {
     setGlobalAction("precompute");
     setError(null);
-    setActionMessage("Заранее готовлю похожие материалы и графы...");
+    setActionMessage("Ставлю подготовку похожих, графов и сравнений в фон...");
     try {
-      const result = await precomputeIntelligence({
+      const job = await startPipelineJob({
         dateFrom,
         dateTo,
         sourceCode,
         language,
-        limit: 100
+        limit: 100,
+        onlyWithAnalysis: true,
+        steps: ["embed", "similar", "graph_precompute", "compare_precompute"]
       });
-      setActionMessage(`Готово: ${result.cached_graphs} графов, ${result.cached_similar} кэшей похожих материалов.`);
+      watchedJobIds.current.add(job.id);
+      setJobs((current) => upsertJob(current, job));
+      setActionMessage(`Задача #${job.id} запущена. UI будет обновлять прогресс автоматически.`);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Не удалось выполнить precompute");
+      setError(caught instanceof Error ? caught.message : "Не удалось поставить precompute в очередь");
     } finally {
       setGlobalAction(null);
+    }
+  }
+
+  async function handleCancelJob(jobId: number) {
+    try {
+      const job = await cancelJob(jobId);
+      setJobs((current) => upsertJob(current, job));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Не удалось отменить задачу");
     }
   }
 
@@ -245,7 +300,7 @@ function ArticlesContent() {
           </button>
           <div className={styles.quickActions}>
             <button onClick={handlePrecompute} disabled={globalAction !== null}>
-              {globalAction === "precompute" ? "Готовлю..." : "Подготовить похожие и графы"}
+              {globalAction === "precompute" ? "Ставлю..." : "Подготовить похожие, графы и сравнения"}
             </button>
           </div>
         </div>
@@ -272,6 +327,8 @@ function ArticlesContent() {
           </div>
         ))}
       </section>
+
+      {jobs.length > 0 ? <JobsPanel jobs={jobs.slice(0, 6)} onCancel={handleCancelJob} /> : null}
 
       <section className={styles.timelinePanel}>
         <div>
@@ -383,6 +440,7 @@ function ArticlesContent() {
                 actionState={actionState}
                 analysis={analysisByArticle[article.id] ?? null}
                 article={article}
+                job={jobByArticleId.get(article.id)}
                 notice={noticeByArticle[article.id]}
                 onAnalyze={handleAnalyze}
                 onCompare={(id) => router.push(`/articles/${id}/compare`)}
@@ -461,6 +519,7 @@ function ArticleCard({
   actionState,
   analysis,
   article,
+  job,
   notice,
   onAnalyze,
   onCompare,
@@ -472,6 +531,7 @@ function ArticleCard({
   actionState: ActionState;
   analysis: ArticleAnalysisResponse | null;
   article: ArticleListItem;
+  job?: JobResponse;
   notice?: string;
   onAnalyze: (articleId: number) => void;
   onCompare: (articleId: number) => void;
@@ -480,7 +540,8 @@ function ArticleCard({
   onSimilar: (articleId: number) => void;
   similar?: SimilarArticleItem[];
 }) {
-  const busy = actionState !== null;
+  const jobBusy = job ? isActiveJob(job) : false;
+  const busy = actionState !== null || jobBusy;
   const entities = analysis?.entities.slice(0, 5) ?? [];
   return (
     <article className={styles.articleCard}>
@@ -511,7 +572,7 @@ function ArticleCard({
 
       <div className={styles.cardActions}>
         <button onClick={() => onAnalyze(article.id)} disabled={busy}>
-          {actionState?.articleId === article.id && actionState.action === "analyze" ? "Анализ..." : "Анализ"}
+          {jobBusy ? "В фоне..." : actionState?.articleId === article.id && actionState.action === "analyze" ? "Старт..." : "Анализ"}
         </button>
         <button onClick={() => onSimilar(article.id)} disabled={busy || !article.has_analysis}>Похожие</button>
         <button onClick={() => onGraph(article.id)} disabled={busy || !article.has_analysis}>Граф</button>
@@ -519,6 +580,7 @@ function ArticleCard({
         <button onClick={() => onEvidence(article.id)} disabled={busy || !article.has_analysis}>Доказательства</button>
       </div>
 
+      {job ? <JobProgress job={job} compact /> : null}
       {notice ? <div className={styles.successState}>{notice}</div> : null}
       {similar ? (
         <div className={styles.similarBox}>
@@ -533,6 +595,45 @@ function ArticleCard({
         </div>
       ) : null}
     </article>
+  );
+}
+
+function JobsPanel({ jobs, onCancel }: { jobs: JobResponse[]; onCancel: (jobId: number) => void }) {
+  return (
+    <section className={styles.jobsPanel}>
+      <div>
+        <p className={styles.panelKicker}>Background jobs</p>
+        <h2>Фоновые задачи</h2>
+      </div>
+      <div className={styles.jobsList}>
+        {jobs.map((job) => (
+          <article key={job.id} className={styles.jobItem}>
+            <div className={styles.jobTopline}>
+              <strong>#{job.id} · {translateJobType(job.type)}</strong>
+              <span className={`${styles.statusBadge} ${styles[`job_${job.status}`]}`}>{translateJobStatus(job.status)}</span>
+            </div>
+            <JobProgress job={job} />
+            <small>{latestJobMessage(job)}</small>
+            {isActiveJob(job) ? <button onClick={() => onCancel(job.id)}>Отменить</button> : null}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function JobProgress({ compact = false, job }: { compact?: boolean; job: JobResponse }) {
+  return (
+    <div className={`${styles.jobProgress} ${compact ? styles.compactJobProgress : ""}`}>
+      <div>
+        <span>{translateJobType(job.type)}</span>
+        <b>{Math.round(job.progress * 100)}%</b>
+      </div>
+      <i>
+        <em style={{ width: `${Math.max(4, Math.round(job.progress * 100))}%` }} />
+      </i>
+      <small>{latestJobMessage(job)}</small>
+    </div>
   );
 }
 
@@ -747,6 +848,67 @@ function buildAiInsight(articles: ArticleListItem[], analysisByArticle: Analysis
 
 function articleReadinessLabel(article: ArticleListItem) {
   return article.has_analysis ? "анализ готов" : "без анализа";
+}
+
+function latestJobByArticle(jobs: JobResponse[]) {
+  const result = new Map<number, JobResponse>();
+  for (const job of jobs) {
+    const articleId = getJobArticleId(job);
+    if (!articleId) continue;
+    const current = result.get(articleId);
+    if (!current || new Date(job.created_at).getTime() > new Date(current.created_at).getTime()) {
+      result.set(articleId, job);
+    }
+  }
+  return result;
+}
+
+function getJobArticleId(job: JobResponse) {
+  const raw = job.params.article_id;
+  return typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : null;
+}
+
+function isActiveJob(job: JobResponse) {
+  return job.status === "pending" || job.status === "running";
+}
+
+function isFinishedJob(job: JobResponse) {
+  return job.status === "completed" || job.status === "failed" || job.status === "cancelled";
+}
+
+function upsertJob(current: JobResponse[], job: JobResponse) {
+  const next = current.filter((item) => item.id !== job.id);
+  return [job, ...next].sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime());
+}
+
+function latestJobMessage(job: JobResponse) {
+  const latest = job.logs[job.logs.length - 1];
+  if (latest?.message) return latest.message;
+  if (job.error) return job.error;
+  return translateJobStatus(job.status);
+}
+
+function translateJobType(type: string) {
+  const labels: Record<string, string> = {
+    analyze: "анализ статьи",
+    embed: "embedding",
+    similar: "похожие",
+    graph_precompute: "граф",
+    compare_precompute: "сравнение",
+    pipeline: "pipeline"
+  };
+  return labels[type] ?? type;
+}
+
+function translateJobStatus(status: JobResponse["status"]) {
+  const labels: Record<JobResponse["status"], string> = {
+    pending: "в очереди",
+    running: "в работе",
+    completed: "готово",
+    failed: "ошибка",
+    cancelled: "отменено"
+  };
+  return labels[status];
 }
 
 function average(values: number[]) {

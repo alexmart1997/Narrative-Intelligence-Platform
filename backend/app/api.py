@@ -21,6 +21,7 @@ from app.graph import GraphError, build_article_graph
 from app.http_errors import comparison_http_error, event_http_error, narrative_http_error, vector_http_error
 from app.config import settings
 from app.ingestion.service import ingest_source_period, query_articles, supported_sources
+from app.jobs import JobError, cancel_job, enqueue_job, get_job_or_raise, job_to_dict, list_jobs
 from app.llm import LlmError, call_llm
 from app.models import AnalysisEvidence, ArticleAnalysis, Event, Narrative
 from app.narratives import NarrativeDiscoveryError, build_narrative_graph, discover_narratives
@@ -40,6 +41,9 @@ from app.schemas import (
     CompareWithSimilarResponse,
     IngestSourcePeriodRequest,
     IngestSourcePeriodResponse,
+    JobAnalyzeRequest,
+    JobPipelineRequest,
+    JobResponse,
     LlmTestRequest,
     LlmTestResponse,
     EventDetectAllResponse,
@@ -182,6 +186,70 @@ def test_llm(payload: LlmTestRequest) -> LlmTestResponse:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     return LlmTestResponse(model=settings.ollama_model, response=answer)
+
+
+@router.post("/jobs/analyze", response_model=JobResponse)
+def create_analyze_job(
+    payload: JobAnalyzeRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Создает фоновую задачу полного анализа одной статьи."""
+
+    job = enqueue_job(db, "analyze", payload.model_dump())
+    return job_to_dict(job)
+
+
+@router.post("/jobs/pipeline", response_model=JobResponse)
+def create_pipeline_job(
+    payload: JobPipelineRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Создает фоновую batch-задачу для статей без Celery/Redis."""
+
+    try:
+        job = enqueue_job(db, "pipeline", payload.model_dump())
+    except JobError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return job_to_dict(job)
+
+
+@router.get("/jobs", response_model=list[JobResponse])
+def jobs_endpoint(
+    status: Optional[str] = None,
+    job_type: Optional[str] = Query(default=None, alias="type"),
+    limit: int = Query(default=30, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> list[dict[str, object]]:
+    """Возвращает последние локальные фоновые задачи для polling в UI."""
+
+    jobs = list_jobs(db, status=status, job_type=job_type, limit=limit)
+    return [job_to_dict(job) for job in jobs]
+
+
+@router.get("/jobs/{job_id}", response_model=JobResponse)
+def job_endpoint(
+    job_id: int,
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Возвращает состояние одной фоновой задачи."""
+
+    try:
+        return job_to_dict(get_job_or_raise(db, job_id))
+    except JobError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=JobResponse)
+def cancel_job_endpoint(
+    job_id: int,
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Запрашивает отмену фоновой задачи."""
+
+    try:
+        return job_to_dict(cancel_job(db, job_id))
+    except JobError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/articles/{article_id}/analyze", response_model=ArticleAnalysisResponse)

@@ -197,6 +197,23 @@ export type PrecomputeResponse = {
   errors: Array<{ article_id?: number; error: string }>;
 };
 
+export type JobStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
+
+export type JobResponse = {
+  id: number;
+  type: string;
+  status: JobStatus;
+  progress: number;
+  params: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  logs: Array<{ ts?: string; message?: string }>;
+  error: string | null;
+  retry_count: number;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+};
+
 export type SourceProfileResponse = {
   source: {
     id: number;
@@ -348,6 +365,50 @@ export async function getNarrativeGraph(narrativeId: number): Promise<ArticleGra
 
 export async function discoverNarratives(): Promise<NarrativeDiscoveryResponse> {
   return request<NarrativeDiscoveryResponse>("/narratives/discover", { method: "POST" });
+}
+
+export async function startAnalyzeJob(articleId: number): Promise<JobResponse> {
+  return request<JobResponse>("/jobs/analyze", {
+    method: "POST",
+    body: JSON.stringify({ article_id: articleId })
+  });
+}
+
+export async function startPipelineJob(filters: {
+  dateFrom?: string;
+  dateTo?: string;
+  sourceCode?: string;
+  language?: string;
+  limit?: number;
+  steps?: string[];
+  onlyWithoutAnalysis?: boolean;
+  onlyWithAnalysis?: boolean;
+} = {}): Promise<JobResponse> {
+  return request<JobResponse>("/jobs/pipeline", {
+    method: "POST",
+    body: JSON.stringify({
+      source_code: filters.sourceCode || null,
+      date_from: filters.dateFrom || null,
+      date_to: filters.dateTo || null,
+      language: filters.language || null,
+      only_without_analysis: filters.onlyWithoutAnalysis ?? false,
+      only_with_analysis: filters.onlyWithAnalysis ?? false,
+      limit: filters.limit ?? 100,
+      steps: filters.steps ?? ["analyze", "embed", "similar", "graph_precompute"]
+    })
+  });
+}
+
+export async function getJobs(): Promise<JobResponse[]> {
+  return request<JobResponse[]>("/jobs?limit=12");
+}
+
+export async function getJob(jobId: number): Promise<JobResponse> {
+  return request<JobResponse>(`/jobs/${jobId}`);
+}
+
+export async function cancelJob(jobId: number): Promise<JobResponse> {
+  return request<JobResponse>(`/jobs/${jobId}/cancel`, { method: "POST" });
 }
 
 export async function precomputeIntelligence(filters: {

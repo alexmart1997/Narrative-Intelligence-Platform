@@ -13,10 +13,10 @@ import {
   ArticleGraphResponse,
   GraphEdge,
   GraphNode,
-  analyzeArticle,
-  detectArticleEvent,
-  embedArticle,
-  getArticleGraph
+  JobResponse,
+  getArticleGraph,
+  getJob,
+  startAnalyzeJob
 } from "@/lib/api";
 import styles from "./page.module.css";
 
@@ -135,6 +135,7 @@ export default function ArticleGraphPage() {
   const [cameraMode, setCameraMode] = useState<CameraMode>("free");
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const title = useMemo(() => {
@@ -243,16 +244,17 @@ export default function ArticleGraphPage() {
 
   async function analyzeAndReload() {
     setProcessing(true);
+    setProcessingMessage("Ставлю анализ в фоновую очередь...");
     setError(null);
     try {
-      await analyzeArticle(activeArticleId);
-      await embedArticle(activeArticleId);
-      await detectArticleEvent(activeArticleId);
+      const job = await startAnalyzeJob(activeArticleId);
+      await waitForJobCompletion(job.id, setProcessingMessage);
       await loadGraph(activeArticleId);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось выполнить анализ");
     } finally {
       setProcessing(false);
+      setProcessingMessage(null);
     }
   }
 
@@ -388,7 +390,7 @@ export default function ArticleGraphPage() {
             </div>
           ) : null}
           {loading ? <div className={styles.state}>Загружаю 3D-граф...</div> : null}
-          {processing ? <div className={styles.state}>Выполняю анализ, embedding и подготовку служебных связей...</div> : null}
+          {processing ? <div className={styles.state}>{processingMessage ?? "Фоновая задача выполняется..."}</div> : null}
           {error ? (
             <div className={styles.error}>
               <strong>{error}</strong>
@@ -1327,6 +1329,40 @@ function translateDataKey(key: string) {
     type: "Тип"
   };
   return labels[key] ?? key;
+}
+
+async function waitForJobCompletion(
+  jobId: number,
+  onUpdate: (message: string) => void
+) {
+  for (;;) {
+    await delay(1800);
+    const job = await getJob(jobId);
+    onUpdate(`Задача #${job.id}: ${translateJobStatus(job.status)} · ${Math.round(job.progress * 100)}% · ${latestJobMessage(job)}`);
+    if (job.status === "completed") return;
+    if (job.status === "failed") throw new Error(job.error || "Фоновая задача завершилась ошибкой");
+    if (job.status === "cancelled") throw new Error("Фоновая задача отменена");
+  }
+}
+
+function latestJobMessage(job: JobResponse) {
+  const latest = job.logs[job.logs.length - 1];
+  return latest?.message || job.error || "Ожидание статуса";
+}
+
+function translateJobStatus(status: JobResponse["status"]) {
+  const labels: Record<JobResponse["status"], string> = {
+    pending: "в очереди",
+    running: "в работе",
+    completed: "готово",
+    failed: "ошибка",
+    cancelled: "отменено"
+  };
+  return labels[status];
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function formatNumber(value: number) {

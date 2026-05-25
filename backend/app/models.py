@@ -41,6 +41,33 @@ class MaterialType(str, enum.Enum):
     unknown = "unknown"
 
 
+class Job(Base):
+    """Локальная фоновая задача без Celery/Redis.
+
+    Храним состояние в PostgreSQL, чтобы frontend мог показывать прогресс,
+    а долгий анализ не блокировал HTTP-запрос.
+    """
+
+    __tablename__ = "jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    type: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending", server_default="pending")
+    progress: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default="0")
+    params_json: Mapped[str] = mapped_column(Text, nullable=False)
+    result_json: Mapped[Optional[str]] = mapped_column(Text)
+    logs_json: Mapped[Optional[str]] = mapped_column(Text)
+    error: Mapped[Optional[str]] = mapped_column(Text)
+    retry_count: Mapped[int] = mapped_column(nullable=False, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+
+
 class PipelineRun(Base):
     """Последний/исторический запуск локального batch pipeline."""
 

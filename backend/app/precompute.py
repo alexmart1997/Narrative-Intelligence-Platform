@@ -34,44 +34,100 @@ def precompute_article_intelligence(db: Session, params: dict[str, Any]) -> dict
     }
 
     for article in articles:
-        cache = _get_or_create_cache(db, article.id)
-        cache.status = "running"
-        cache.error = None
-        db.commit()
-
         try:
-            # Эти шаги делают последующий graph/similar почти мгновенными для пользователя.
-            if article.analysis is not None:
-                embed_article(db, article.id)
-                detect_event_for_article(db, article.id)
-
-            graph = build_article_graph(db, article.id, include_related=True, limit_related=params.get("limit_related", 30))
-            similar = find_similar_articles(db, article_id=article.id, limit=params.get("similar_limit", 10), min_score=0.68)
-            compare = compare_with_similar(db, article.id) if include_compare else None
-
-            cache.graph_json = json.dumps(graph, ensure_ascii=False, default=str)
-            cache.similar_json = json.dumps(similar, ensure_ascii=False, default=str)
-            cache.compare_json = json.dumps(compare, ensure_ascii=False, default=str) if compare is not None else cache.compare_json
-            cache.status = "ready"
-            cache.updated_at = datetime.now(timezone.utc)
-            db.commit()
+            single_result = precompute_single_article(
+                db,
+                article.id,
+                include_graph=True,
+                include_similar=True,
+                include_compare=include_compare,
+                limit_related=params.get("limit_related", 30),
+                similar_limit=params.get("similar_limit", 10),
+                ensure_support_layers=True,
+            )
 
             result["processed"] += 1
-            result["cached_graphs"] += 1
-            result["cached_similar"] += 1
-            if compare is not None:
+            result["cached_graphs"] += int(bool(single_result.get("cached_graph")))
+            result["cached_similar"] += int(bool(single_result.get("cached_similar")))
+            if single_result.get("cached_compare"):
                 result["cached_comparisons"] += 1
         except Exception as exc:
-            db.rollback()
-            cache = _get_or_create_cache(db, article.id)
-            cache.status = "failed"
-            cache.error = str(exc)
-            cache.updated_at = datetime.now(timezone.utc)
-            db.commit()
             result["failed"] += 1
             result["errors"].append({"article_id": article.id, "error": str(exc)})
 
     return result
+
+
+def precompute_single_article(
+    db: Session,
+    article_id: int,
+    *,
+    include_graph: bool = True,
+    include_similar: bool = True,
+    include_compare: bool = False,
+    limit_related: int = 30,
+    similar_limit: int = 10,
+    ensure_support_layers: bool = True,
+) -> dict[str, Any]:
+    """Готовит кэш для одной статьи.
+
+    Функция используется и старым синхронным endpoint, и новым jobs runner.
+    Поэтому здесь держим маленькую атомарную единицу работы: одна статья,
+    один cache row, понятный результат.
+    """
+
+    article = db.get(Article, article_id)
+    if article is None:
+        raise ValueError("Статья не найдена")
+    if article.analysis is None:
+        raise ValueError("Для подготовки похожих материалов и графа сначала нужен анализ статьи")
+
+    cache = _get_or_create_cache(db, article.id)
+    cache.status = "running"
+    cache.error = None
+    db.commit()
+
+    try:
+        # Эти шаги делают последующий graph/similar почти мгновенными для пользователя.
+        if ensure_support_layers:
+            embed_article(db, article.id)
+            detect_event_for_article(db, article.id)
+
+        graph = (
+            build_article_graph(db, article.id, include_related=True, limit_related=limit_related)
+            if include_graph
+            else None
+        )
+        similar = (
+            find_similar_articles(db, article_id=article.id, limit=similar_limit, min_score=0.68)
+            if include_similar
+            else None
+        )
+        compare = compare_with_similar(db, article.id) if include_compare else None
+
+        if graph is not None:
+            cache.graph_json = json.dumps(graph, ensure_ascii=False, default=str)
+        if similar is not None:
+            cache.similar_json = json.dumps(similar, ensure_ascii=False, default=str)
+        if compare is not None:
+            cache.compare_json = json.dumps(compare, ensure_ascii=False, default=str)
+        cache.status = "ready"
+        cache.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        return {
+            "article_id": article.id,
+            "cached_graph": graph is not None,
+            "cached_similar": similar is not None,
+            "cached_compare": compare is not None,
+        }
+    except Exception as exc:
+        db.rollback()
+        cache = _get_or_create_cache(db, article.id)
+        cache.status = "failed"
+        cache.error = str(exc)
+        cache.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        raise
 
 
 def get_cached_graph(db: Session, article_id: int) -> dict[str, Any] | None:
