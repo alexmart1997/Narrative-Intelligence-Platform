@@ -379,8 +379,8 @@ function ArticleCard({
       {analysis ? (
         <div className={styles.analysisGrid}>
           <InfoPill label="Тональность" value={analysis.sentiment} tone={analysis.sentiment} />
-          <InfoPill label="Фрейминг" value={analysis.framing} />
-          <InfoPill label="Нарратив" value={analysis.narrative_hypothesis} />
+          <InfoPill label="Фрейминг" value={analysis.framing} expandable />
+          <InfoPill label="Нарратив" value={analysis.narrative_hypothesis} expandable />
         </div>
       ) : null}
 
@@ -427,11 +427,33 @@ function ArticleCard({
   );
 }
 
-function InfoPill({ label, tone, value }: { label: string; tone?: string; value: string }) {
+function InfoPill({
+  expandable = false,
+  label,
+  tone,
+  value
+}: {
+  expandable?: boolean;
+  label: string;
+  tone?: string;
+  value: string;
+}) {
+  const shouldCollapse = expandable && value.length > 150;
+
   return (
     <div className={styles.infoPill}>
       <span>{label}</span>
-      <strong className={tone ? styles[`tone_${tone}`] ?? "" : ""}>{truncate(value, 116)}</strong>
+      {shouldCollapse ? (
+        <details>
+          <summary>
+            <strong className={tone ? styles[`tone_${tone}`] ?? "" : ""}>{truncate(value, 150)}</strong>
+            <em>Показать полностью</em>
+          </summary>
+          <p>{value}</p>
+        </details>
+      ) : (
+        <strong className={tone ? styles[`tone_${tone}`] ?? "" : ""}>{value}</strong>
+      )}
     </div>
   );
 }

@@ -606,6 +606,58 @@
   line-height: 1.35;
 }
 
+.infoPill details {
+  display: grid;
+  gap: 8px;
+}
+
+.infoPill summary {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.infoPill summary::-webkit-details-marker {
+  display: none;
+}
+
+.infoPill summary em {
+  width: fit-content;
+  color: #7dd3fc;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.infoPill details[open] summary em {
+  color: #94a3b8;
+}
+
+.infoPill details[open] summary strong {
+  display: none;
+}
+
+.infoPill details[open] summary em::before {
+  content: "Свернуть";
+}
+
+.infoPill details[open] summary em {
+  font-size: 0;
+}
+
+.infoPill details[open] summary em::before {
+  font-size: 11px;
+}
+
+.infoPill p {
+  margin: 0;
+  color: #dbe6f4;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
 .entityRow {
   margin-top: 12px;
 }
