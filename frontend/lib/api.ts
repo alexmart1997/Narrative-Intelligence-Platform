@@ -31,6 +31,13 @@ export type SourceInfo = {
 
 export type SimilarArticleItem = {
   score: number;
+  similarity_score: number;
+  embedding_similarity: number;
+  same_story_probability: number;
+  shared_entities: string[];
+  shared_keywords: string[];
+  similarity_reason: string;
+  classification: "same_story" | "related_context" | "not_related";
   article_id: number | null;
   title: string;
   source_name: string;

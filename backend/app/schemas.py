@@ -127,6 +127,13 @@ class EmbedAllResponse(BaseModel):
 
 class SimilarArticleItem(BaseModel):
     score: float
+    similarity_score: float
+    embedding_similarity: float
+    same_story_probability: float
+    shared_entities: list[str]
+    shared_keywords: list[str]
+    similarity_reason: str
+    classification: str
     article_id: Optional[int]
     title: str
     source_name: str

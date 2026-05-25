@@ -586,11 +586,21 @@ function ArticleCard({
         <div className={styles.similarBox}>
           <strong>Похожие материалы</strong>
           {similar.length === 0 ? (
-            <p>Реально похожих материалов не найдено. Это нормально: система не притягивает общую тему без фактической связи.</p>
+            <p>Хороших кандидатов нет: hybrid guard не нашел конкретных общих сущностей, ключевых слов или того же сюжета.</p>
           ) : similar.slice(0, 3).map((item) => (
-            <span key={`${article.id}-${item.article_id}`}>
-              {item.source_name} · {truncate(item.title, 92)} · {item.score.toFixed(3)}
-            </span>
+            <article className={styles.similarItem} key={`${article.id}-${item.article_id}`}>
+              <div>
+                <span className={styles.similarClass}>{translateSimilarityClass(item.classification)}</span>
+                <b>{Math.round(item.same_story_probability * 100)}%</b>
+              </div>
+              <strong>{item.source_name} · {truncate(item.title, 92)}</strong>
+              <p>{item.similarity_reason}</p>
+              <small>
+                Why similar?
+                {item.shared_entities.length > 0 ? ` Shared entities: ${item.shared_entities.slice(0, 4).join(", ")}.` : ""}
+                {item.shared_keywords.length > 0 ? ` Shared keywords: ${item.shared_keywords.slice(0, 5).join(", ")}.` : ""}
+              </small>
+            </article>
           ))}
         </div>
       ) : null}
@@ -909,6 +919,15 @@ function translateJobStatus(status: JobResponse["status"]) {
     cancelled: "отменено"
   };
   return labels[status];
+}
+
+function translateSimilarityClass(classification: SimilarArticleItem["classification"]) {
+  const labels: Record<SimilarArticleItem["classification"], string> = {
+    same_story: "тот же сюжет",
+    related_context: "связанный контекст",
+    not_related: "не связано"
+  };
+  return labels[classification];
 }
 
 function average(values: number[]) {

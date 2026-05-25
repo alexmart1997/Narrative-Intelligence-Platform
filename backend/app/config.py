@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     qdrant_port: int = 6333
     qdrant_collection: str = "articles"
     embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    similarity_llm_rerank: bool = False
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen3:4b"
 

@@ -7,10 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.article_similarity import (
-    SIMILARITY_GUARD_VERSION,
-    articles_are_contextually_related,
+    classify_article_similarity,
     looks_like_same_source_duplicate,
-    relation_debug_data,
 )
 from app.config import settings
 from app.models import Article, ArticleAnalysis
@@ -142,27 +140,39 @@ def find_similar_articles(
             continue
         if looks_like_same_source_duplicate(article, candidate_article):
             continue
-        if not articles_are_contextually_related(article, candidate_article, float(result.score), mode="vector"):
+        similarity = classify_article_similarity(
+            article,
+            candidate_article,
+            float(result.score),
+            use_llm_rerank=settings.similarity_llm_rerank,
+        )
+        if similarity["classification"] == "not_related":
             continue
 
-        debug_data = relation_debug_data(article, candidate_article, float(result.score))
         item = {
-            "score": result.score,
+            "score": similarity["similarity_score"],
+            "similarity_score": similarity["similarity_score"],
+            "embedding_similarity": similarity["embedding_similarity"],
+            "same_story_probability": similarity["same_story_probability"],
+            "shared_entities": similarity["shared_entities"],
+            "shared_keywords": similarity["shared_keywords"],
+            "similarity_reason": similarity["similarity_reason"],
+            "classification": similarity["classification"],
             "article_id": candidate_article_id,
             "title": payload.get("title", ""),
             "source_name": payload.get("source_name", ""),
             "published_at": payload.get("published_at", ""),
             "language": payload.get("language", ""),
-            "guard_version": SIMILARITY_GUARD_VERSION,
-            "match_reason": debug_data,
+            "guard_version": similarity["guard_version"],
+            "match_reason": similarity["match_reason"],
         }
+        if float(item["score"]) < min_score:
+            continue
         items.append(item)
         if len(items) >= limit:
             break
 
-    # Qdrant всегда возвращает ближайшие точки, даже если реальной смысловой
-    # близости почти нет. Для аналитического UI низкие score лучше скрывать.
-    return [item for item in items if float(item["score"]) >= min_score]
+    return items
 
 
 def build_embedding(article: Article, analysis: ArticleAnalysis) -> list[float]:
