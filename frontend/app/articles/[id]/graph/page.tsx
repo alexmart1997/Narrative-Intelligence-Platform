@@ -370,7 +370,7 @@ export default function ArticleGraphPage() {
             <span>Размер = важность / плотность / уверенность</span>
             <span>Прозрачность = confidence, толщина дуги = сила связи</span>
             <span>Клик по статье = открыть ее граф · клик по сущности = переезд к новостям с ней</span>
-            <span>Hover подсвечивает соседей · particles показывают направление</span>
+            <span>Hover мягко подсвечивает соседей · направление читается по дугам source → target</span>
           </div>
           {focusEntity ? (
             <div className={styles.focusBanner}>
@@ -382,7 +382,7 @@ export default function ArticleGraphPage() {
           <div className={styles.routeGuide}>
             <strong>Маршруты к связанным новостям</strong>
             <span className={styles.routeLine} />
-            <p>Светящиеся дуги ведут к похожим статьям, общим сюжетам и новостям с выбранным объектом.</p>
+            <p>Основные дуги ведут к похожим статьям, общим сюжетам и новостям с выбранным объектом.</p>
           </div>
           {graph && relatedCount === 0 ? (
             <div className={styles.insight}>
@@ -457,7 +457,7 @@ function createThreeGraphScene({
   const nodeById = new Map(sceneNodes.map((node) => [node.id, node]));
   const neighborMap = buildNeighborMap(visibleGraph.edges);
   const scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2("#030405", 0.002);
+  scene.fog = new THREE.FogExp2("#030405", 0.00028);
 
   const width = Math.max(container.clientWidth, 640);
   const height = Math.max(container.clientHeight, 480);
@@ -469,12 +469,12 @@ function createThreeGraphScene({
   renderer.setSize(width, height);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1;
+  renderer.toneMappingExposure = 0.9;
   container.replaceChildren(renderer.domElement);
 
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.46, 0.62, 0.15);
+  const bloomPass = new UnrealBloomPass(new THREE.Vector2(width, height), 0.16, 0.32, 0.42);
   composer.addPass(bloomPass);
   composer.addPass(new OutputPass());
 
@@ -494,11 +494,11 @@ function createThreeGraphScene({
   controls.autoRotateSpeed = 0.8;
   controls.target.set(0, 0, 0);
 
-  scene.add(new THREE.AmbientLight("#7dd3fc", 0.56));
-  const keyLight = new THREE.PointLight("#38bdf8", 2.55, 1200);
+  scene.add(new THREE.AmbientLight("#cbd5e1", 0.72));
+  const keyLight = new THREE.PointLight("#7dd3fc", 1.2, 1200);
   keyLight.position.set(-220, 260, 300);
   scene.add(keyLight);
-  const warmLight = new THREE.PointLight("#fb923c", 1.7, 900);
+  const warmLight = new THREE.PointLight("#fbbf24", 0.62, 900);
   warmLight.position.set(260, -180, 260);
   scene.add(warmLight);
 
@@ -507,10 +507,8 @@ function createThreeGraphScene({
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
   const edgeObjects: Array<{ edge: GraphEdge; object: THREE.Object3D }> = [];
-  const animatedParticles: Array<{ mesh: THREE.Mesh; curve: THREE.QuadraticBezierCurve3; speed: number; offset: number }> = [];
   let hoveredNodeId: string | null = null;
   let flyTarget: { camera: THREE.Vector3; target: THREE.Vector3; startedAt: number; duration: number } | null = null;
-  const clock = new THREE.Clock();
 
   addStarField(scene);
   addDepthRings(scene);
@@ -522,13 +520,6 @@ function createThreeGraphScene({
     const object = createEdgeObject(source, target, edge);
     scene.add(object);
     edgeObjects.push({ edge, object });
-    if (animatedParticles.length < 140) {
-      const items = createFlowParticles(source, target, edge);
-      for (const item of items) {
-        scene.add(item.mesh);
-        animatedParticles.push(item);
-      }
-    }
   }
 
   for (const node of sceneNodes) {
@@ -549,7 +540,6 @@ function createThreeGraphScene({
   }
 
   function render() {
-    const delta = clock.getDelta();
     if (flyTarget) {
       const progress = Math.min(1, (performance.now() - flyTarget.startedAt) / flyTarget.duration);
       const eased = 1 - Math.pow(1 - progress, 3);
@@ -557,7 +547,6 @@ function createThreeGraphScene({
       controls.target.lerp(flyTarget.target, eased);
       if (progress >= 1) flyTarget = null;
     }
-    updateFlowParticles(animatedParticles, delta);
     controls.update();
     updateHtmlLabels(labelItems, camera, renderer, filters.labelDensity, hoveredNodeId, selectedNodeId);
     composer.render();
@@ -846,11 +835,11 @@ function createNodeMesh(node: SceneNode, focused: boolean, selected: boolean) {
   const material = new THREE.MeshStandardMaterial({
     color: node.color,
     emissive: node.color,
-    emissiveIntensity: focused || selected ? 1.45 : node.type === "article" ? 0.82 : 0.55,
+    emissiveIntensity: focused || selected ? 0.58 : node.type === "article" ? 0.34 : 0.2,
     metalness: 0.15,
-    roughness: 0.26,
+    roughness: 0.42,
     transparent: true,
-    opacity: Math.max(0.46, Math.min(0.96, node.confidence)),
+    opacity: Math.max(0.72, Math.min(0.98, node.confidence)),
   });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.position.copy(node.position);
@@ -859,8 +848,7 @@ function createNodeMesh(node: SceneNode, focused: boolean, selected: boolean) {
   const glowMaterial = new THREE.MeshBasicMaterial({
     color: node.color,
     transparent: true,
-    opacity: focused || selected ? 0.12 : 0.04,
-    blending: THREE.AdditiveBlending,
+    opacity: focused || selected ? 0.055 : 0.018,
     depthWrite: false
   });
   const glow = new THREE.Mesh(glowGeometry, glowMaterial);
@@ -872,8 +860,7 @@ function createNodeMesh(node: SceneNode, focused: boolean, selected: boolean) {
       new THREE.MeshBasicMaterial({
         color: selected ? "#fbbf24" : "#38bdf8",
         transparent: true,
-        opacity: selected ? 0.72 : 0.34,
-        blending: THREE.AdditiveBlending,
+        opacity: selected ? 0.46 : 0.24,
         depthWrite: false
       })
     );
@@ -887,39 +874,20 @@ function createEdgeObject(source: SceneNode, target: SceneNode, edge: GraphEdge)
   const curve = edgeCurve(source, target);
   const color = edgePalette[edge.label] ?? "#7dd3fc";
   const strength = edgeStrength(edge);
-  const opacity = Math.max(0.14, Math.min(0.82, strength * 0.88));
+  const opacity = Math.max(0.18, Math.min(0.58, strength * 0.62));
   if (routeEdgeTypes.has(edge.label)) {
     const group = new THREE.Group();
     group.userData.edgeId = edge.id;
-    const geometry = new THREE.TubeGeometry(curve, 52, (edge.label === "same_event_as" ? 2.6 : 1.8) + strength * 2.2, 10, false);
+    const geometry = new THREE.TubeGeometry(curve, 52, (edge.label === "same_event_as" ? 1.45 : 1.05) + strength * 1.25, 8, false);
     const material = new THREE.MeshBasicMaterial({
       color,
       transparent: true,
-      opacity: Math.max(0.34, opacity),
-      blending: THREE.AdditiveBlending,
+      opacity: Math.max(0.26, opacity),
       depthWrite: false,
     });
     const tube = new THREE.Mesh(geometry, material);
     tube.userData.edgeId = edge.id;
     group.add(tube);
-
-    // Световые точки делают маршрут к похожей статье читаемым на общем масштабе.
-    for (let index = 1; index <= 5; index += 1) {
-      const point = curve.getPoint(index / 6);
-      const marker = new THREE.Mesh(
-        new THREE.SphereGeometry(edge.label === "same_event_as" ? 5.2 : 4.4, 16, 12),
-        new THREE.MeshBasicMaterial({
-          color: index % 2 === 0 ? "#f97316" : color,
-          transparent: true,
-          opacity: Math.max(0.3, opacity * 0.82),
-          blending: THREE.AdditiveBlending,
-          depthWrite: false
-        })
-      );
-      marker.position.copy(point);
-      marker.userData.edgeId = edge.id;
-      group.add(marker);
-    }
     return group;
   }
 
@@ -928,8 +896,7 @@ function createEdgeObject(source: SceneNode, target: SceneNode, edge: GraphEdge)
   const material = new THREE.LineBasicMaterial({
     color,
     transparent: true,
-    opacity: Math.max(0.14, opacity * 0.56),
-    blending: THREE.AdditiveBlending
+    opacity: Math.max(0.16, opacity * 0.72)
   });
   return new THREE.Line(geometry, material);
 }
@@ -938,45 +905,6 @@ function edgeCurve(source: SceneNode, target: SceneNode) {
   const midpoint = source.position.clone().add(target.position).multiplyScalar(0.5);
   midpoint.y += 36 + source.position.distanceTo(target.position) * 0.1;
   return new THREE.QuadraticBezierCurve3(source.position, midpoint, target.position);
-}
-
-function createFlowParticles(source: SceneNode, target: SceneNode, edge: GraphEdge) {
-  const strength = edgeStrength(edge);
-  if (strength < 0.2) return [];
-  const curve = edgeCurve(source, target);
-  const color = edgePalette[edge.label] ?? "#7dd3fc";
-  const particleCount = routeEdgeTypes.has(edge.label) ? 3 : 1;
-  const items: Array<{ mesh: THREE.Mesh; curve: THREE.QuadraticBezierCurve3; speed: number; offset: number }> = [];
-  for (let index = 0; index < particleCount; index += 1) {
-    const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(2.3 + strength * 2.5, 12, 8),
-      new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: 0.58,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      }),
-    );
-    mesh.userData.edgeId = edge.id;
-    items.push({
-      mesh,
-      curve,
-      speed: 0.12 + strength * 0.32,
-      offset: index / particleCount,
-    });
-  }
-  return items;
-}
-
-function updateFlowParticles(
-  particles: Array<{ mesh: THREE.Mesh; curve: THREE.QuadraticBezierCurve3; speed: number; offset: number }>,
-  delta: number,
-) {
-  for (const item of particles) {
-    item.offset = (item.offset + delta * item.speed) % 1;
-    item.mesh.position.copy(item.curve.getPoint(item.offset));
-  }
 }
 
 function applyHoverState(
@@ -1002,7 +930,7 @@ function applyHoverState(
     mesh.scale.setScalar(active ? (node.id === hoveredNodeId ? 1.18 : 1) : 0.72);
     const material = mesh.material;
     if (!Array.isArray(material)) {
-      material.opacity = active ? Math.max(0.44, Math.min(0.96, node.confidence)) : 0.16;
+      material.opacity = active ? Math.max(0.72, Math.min(0.98, node.confidence)) : 0.5;
       material.needsUpdate = true;
     }
   }
@@ -1013,7 +941,7 @@ function applyHoverState(
       if (object instanceof THREE.Mesh || object instanceof THREE.Line) {
         const material = object.material;
         if (!Array.isArray(material)) {
-          material.opacity = active ? Math.max(0.22, Math.min(0.72, edgeStrength(item.edge) * 0.82)) : 0.06;
+          material.opacity = active ? Math.max(0.2, Math.min(0.58, edgeStrength(item.edge) * 0.62)) : 0.12;
           material.needsUpdate = true;
         }
       }
@@ -1046,7 +974,7 @@ function edgeStrength(edge: GraphEdge) {
 }
 
 function addStarField(scene: THREE.Scene) {
-  const count = 760;
+  const count = 260;
   const positions = new Float32Array(count * 3);
   for (let index = 0; index < count; index += 1) {
     positions[index * 3] = (Math.random() - 0.5) * 1600;
@@ -1057,10 +985,9 @@ function addStarField(scene: THREE.Scene) {
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   const material = new THREE.PointsMaterial({
     color: "#38bdf8",
-    opacity: 0.23,
-    size: 1.35,
+    opacity: 0.08,
+    size: 1,
     transparent: true,
-    blending: THREE.AdditiveBlending,
     depthWrite: false
   });
   scene.add(new THREE.Points(geometry, material));
@@ -1073,9 +1000,8 @@ function addDepthRings(scene: THREE.Scene) {
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const material = new THREE.LineBasicMaterial({
       color: "#155e75",
-      opacity: 0.18,
-      transparent: true,
-      blending: THREE.AdditiveBlending
+      opacity: 0.08,
+      transparent: true
     });
     scene.add(new THREE.LineLoop(geometry, material));
   }

@@ -1,6 +1,7 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArticleAnalysisResponse,
@@ -20,6 +21,14 @@ type ActionState = {
 } | null;
 
 type AnalysisMap = Record<number, ArticleAnalysisResponse | null>;
+type ArticleFilterState = {
+  sourceCode: string;
+  language: string;
+  materialType: string;
+  dateFrom: string;
+  dateTo: string;
+  query: string;
+};
 
 const languages = ["ru", "en"];
 const materialTypes = ["news", "article", "analytics", "opinion", "interview", "unknown"];
@@ -49,43 +58,53 @@ function ArticlesContent() {
   const [error, setError] = useState<string | null>(null);
   const [actionState, setActionState] = useState<ActionState>(null);
   const [similarByArticle, setSimilarByArticle] = useState<Record<number, SimilarArticleItem[]>>({});
+  const requestSeq = useRef(0);
 
   const entityId = searchParams.get("entity_id") ?? "";
   const entityName = searchParams.get("entity_name") ?? "";
   const visibleArticles = useMemo(() => articles, [articles]);
 
-  async function loadArticles() {
+  async function loadArticles(filters: ArticleFilterState = currentFilters()) {
+    const requestId = requestSeq.current + 1;
+    requestSeq.current = requestId;
     setLoading(true);
     setError(null);
     try {
       const [sourceList, articleList] = await Promise.all([
         getSources(),
         getArticles({
-          sourceCode,
-          language,
-          q: query,
+          sourceCode: filters.sourceCode,
+          language: filters.language,
+          q: filters.query,
           entityId,
           entityName,
-          dateFrom,
-          dateTo,
-          materialType
+          dateFrom: filters.dateFrom,
+          dateTo: filters.dateTo,
+          materialType: filters.materialType
         })
       ]);
       const uniqueArticles = deduplicateArticleList(articleList.items);
+      const filteredArticles = filterArticlesByVisibleDate(uniqueArticles, filters.dateFrom, filters.dateTo);
+      if (requestId !== requestSeq.current) return;
       setSources(sourceList);
-      setArticles(uniqueArticles);
-      await hydrateAnalyses(uniqueArticles);
+      setArticles(filteredArticles);
+      await hydrateAnalyses(filteredArticles, requestId);
     } catch (caught) {
+      if (requestId !== requestSeq.current) return;
       setError(caught instanceof Error ? caught.message : "Не удалось загрузить статьи");
     } finally {
-      setLoading(false);
+      if (requestId === requestSeq.current) {
+        setLoading(false);
+      }
     }
   }
 
-  async function hydrateAnalyses(items: ArticleListItem[]) {
+  async function hydrateAnalyses(items: ArticleListItem[], requestId: number) {
     const analyzed = items.filter((article) => article.has_analysis).slice(0, 50);
     if (analyzed.length === 0) {
-      setAnalysisByArticle({});
+      if (requestId === requestSeq.current) {
+        setAnalysisByArticle({});
+      }
       return;
     }
 
@@ -99,12 +118,20 @@ function ArticlesContent() {
         next[result.value[0]] = result.value[1];
       }
     }
-    setAnalysisByArticle(next);
+    if (requestId === requestSeq.current) {
+      setAnalysisByArticle(next);
+    }
   }
 
   useEffect(() => {
-    setQuery(searchParams.get("q") ?? "");
-    loadArticles();
+    const filters = filtersFromSearchParams(searchParams);
+    setSourceCode(filters.sourceCode);
+    setLanguage(filters.language);
+    setMaterialType(filters.materialType);
+    setDateFrom(filters.dateFrom);
+    setDateTo(filters.dateTo);
+    setQuery(filters.query);
+    loadArticles(filters);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -133,6 +160,51 @@ function ArticlesContent() {
     }
   }
 
+  function handleDateFromChange(value: string) {
+    setDateFrom(value);
+    // Если пользователь выбирает одну дату, трактуем это как фильтр за конкретный день.
+    if (value && !dateTo) {
+      setDateTo(value);
+    }
+  }
+
+  function handleDateToChange(value: string) {
+    setDateTo(value);
+    if (value && !dateFrom) {
+      setDateFrom(value);
+    }
+  }
+
+  function handleApplyFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const filters = normalizeDateRange({
+      sourceCode: String(formData.get("sourceCode") ?? ""),
+      language: String(formData.get("language") ?? ""),
+      materialType: String(formData.get("materialType") ?? ""),
+      dateFrom: String(formData.get("dateFrom") ?? ""),
+      dateTo: String(formData.get("dateTo") ?? ""),
+      query: String(formData.get("query") ?? "")
+    });
+
+    setSourceCode(filters.sourceCode);
+    setLanguage(filters.language);
+    setMaterialType(filters.materialType);
+    setDateFrom(filters.dateFrom);
+    setDateTo(filters.dateTo);
+    setQuery(filters.query);
+
+    const nextParams = filtersToSearchParams(filters);
+    const nextQuery = nextParams.toString();
+    const nextUrl = nextQuery ? `/articles?${nextQuery}` : "/articles";
+    const currentQuery = searchParams.toString();
+    if (nextQuery === currentQuery) {
+      loadArticles(filters);
+      return;
+    }
+    router.push(nextUrl);
+  }
+
   function resetFilters() {
     setSourceCode("");
     setLanguage("");
@@ -140,6 +212,11 @@ function ArticlesContent() {
     setDateFrom("");
     setDateTo("");
     setQuery("");
+    router.push("/articles");
+  }
+
+  function currentFilters(): ArticleFilterState {
+    return normalizeDateRange({ sourceCode, language, materialType, dateFrom, dateTo, query });
   }
 
   return (
@@ -158,10 +235,10 @@ function ArticlesContent() {
         </div>
       </section>
 
-      <section className={styles.filterBar} aria-label="Article filters">
+      <form className={styles.filterBar} aria-label="Article filters" onSubmit={handleApplyFilters}>
         <label>
           Источник
-          <select value={sourceCode} onChange={(event) => setSourceCode(event.target.value)}>
+          <select name="sourceCode" value={sourceCode} onChange={(event) => setSourceCode(event.target.value)}>
             <option value="">Все источники</option>
             {sources.map((source) => (
               <option key={source.code} value={source.code}>{source.name}</option>
@@ -170,22 +247,22 @@ function ArticlesContent() {
         </label>
         <label>
           С
-          <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+          <input name="dateFrom" type="date" value={dateFrom} onChange={(event) => handleDateFromChange(event.target.value)} />
         </label>
         <label>
           По
-          <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+          <input name="dateTo" type="date" value={dateTo} onChange={(event) => handleDateToChange(event.target.value)} />
         </label>
         <label>
           Язык
-          <select value={language} onChange={(event) => setLanguage(event.target.value)}>
+          <select name="language" value={language} onChange={(event) => setLanguage(event.target.value)}>
             <option value="">Все</option>
             {languages.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
         </label>
         <label>
           Тип
-          <select value={materialType} onChange={(event) => setMaterialType(event.target.value)}>
+          <select name="materialType" value={materialType} onChange={(event) => setMaterialType(event.target.value)}>
             <option value="">Все</option>
             {materialTypes.map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
@@ -193,19 +270,20 @@ function ArticlesContent() {
         <label className={styles.queryFilter}>
           Поиск
           <input
+            name="query"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Moldova, NATO, elections..."
           />
         </label>
-        <button className={styles.applyButton} onClick={loadArticles} disabled={loading}>Применить</button>
-        <button className={styles.ghostButton} onClick={resetFilters} disabled={loading}>Сбросить</button>
-      </section>
+        <button className={styles.applyButton} type="submit" disabled={loading}>Применить</button>
+        <button className={styles.ghostButton} type="button" onClick={resetFilters} disabled={loading}>Сбросить</button>
+      </form>
 
       {error ? (
         <div className={styles.errorState}>
           <strong>{error}</strong>
-          <button onClick={loadArticles}>Повторить</button>
+          <button onClick={() => loadArticles()}>Повторить</button>
         </div>
       ) : null}
       {entityId || entityName ? (
@@ -478,6 +556,62 @@ function articleDedupeKey(item: ArticleListItem) {
   } catch {
     return `${item.source_code ?? item.source_name}:${item.title.trim().toLowerCase()}:${item.published_at}`;
   }
+}
+
+function filtersFromSearchParams(searchParams: URLSearchParams): ArticleFilterState {
+  return normalizeDateRange({
+    sourceCode: searchParams.get("source_code") ?? "",
+    language: searchParams.get("language") ?? "",
+    materialType: searchParams.get("material_type") ?? "",
+    dateFrom: searchParams.get("date_from") ?? "",
+    dateTo: searchParams.get("date_to") ?? "",
+    query: searchParams.get("q") ?? ""
+  });
+}
+
+function filterArticlesByVisibleDate(items: ArticleListItem[], dateFrom: string, dateTo: string) {
+  if (!dateFrom && !dateTo) return items;
+  return items.filter((item) => {
+    const visibleDate = visibleDateKey(item.published_at);
+    if (dateFrom && visibleDate < dateFrom) return false;
+    if (dateTo && visibleDate > dateTo) return false;
+    return true;
+  });
+}
+
+function visibleDateKey(value: string) {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date(value));
+  const year = parts.find((part) => part.type === "year")?.value ?? "0000";
+  const month = parts.find((part) => part.type === "month")?.value ?? "00";
+  const day = parts.find((part) => part.type === "day")?.value ?? "00";
+  return `${year}-${month}-${day}`;
+}
+
+function filtersToSearchParams(filters: ArticleFilterState) {
+  const params = new URLSearchParams();
+  if (filters.sourceCode) params.set("source_code", filters.sourceCode);
+  if (filters.language) params.set("language", filters.language);
+  if (filters.materialType) params.set("material_type", filters.materialType);
+  if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+  if (filters.dateTo) params.set("date_to", filters.dateTo);
+  if (filters.query) params.set("q", filters.query);
+  return params;
+}
+
+function normalizeDateRange(filters: ArticleFilterState): ArticleFilterState {
+  let dateFrom = filters.dateFrom;
+  let dateTo = filters.dateTo;
+  if (dateFrom && !dateTo) dateTo = dateFrom;
+  if (dateTo && !dateFrom) dateFrom = dateTo;
+  if (dateFrom && dateTo && dateFrom > dateTo) {
+    [dateFrom, dateTo] = [dateTo, dateFrom];
+  }
+  return { ...filters, dateFrom, dateTo };
 }
 
 function translateSimilarityClass(classification: SimilarArticleItem["classification"]) {

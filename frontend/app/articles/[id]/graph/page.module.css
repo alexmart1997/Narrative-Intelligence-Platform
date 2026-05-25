@@ -104,10 +104,9 @@
   min-height: calc(100vh - 85px);
   overflow: hidden;
   background:
-    radial-gradient(circle at 22% 34%, rgba(14, 165, 233, 0.16), transparent 24%),
-    radial-gradient(circle at 72% 18%, rgba(251, 113, 133, 0.1), transparent 28%),
-    radial-gradient(circle at 58% 76%, rgba(249, 115, 22, 0.09), transparent 26%),
-    linear-gradient(180deg, #111417 0%, #07090c 55%, #030405 100%);
+    radial-gradient(circle at 22% 34%, rgba(14, 165, 233, 0.08), transparent 25%),
+    radial-gradient(circle at 72% 18%, rgba(148, 163, 184, 0.06), transparent 30%),
+    linear-gradient(180deg, #0b0f13 0%, #07090c 58%, #050608 100%);
 }
 
 .canvasWrap::before {
@@ -115,8 +114,8 @@
   inset: 0;
   z-index: 0;
   background:
-    linear-gradient(rgba(148, 163, 184, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(148, 163, 184, 0.045) 1px, transparent 1px);
+    linear-gradient(rgba(148, 163, 184, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.028) 1px, transparent 1px);
   background-size: 44px 44px;
   content: "";
   pointer-events: none;
@@ -126,7 +125,7 @@
   position: absolute;
   inset: 0;
   z-index: 1;
-  background: radial-gradient(circle at center, transparent 36%, rgba(0, 0, 0, 0.52) 100%);
+  background: radial-gradient(circle at center, transparent 58%, rgba(0, 0, 0, 0.18) 100%);
   content: "";
   pointer-events: none;
 }
@@ -153,11 +152,11 @@
   max-width: 210px;
   gap: 3px;
   padding: 6px 8px;
-  border: 1px solid rgba(125, 211, 252, 0.22);
+  border: 1px solid rgba(125, 211, 252, 0.18);
   border-left: 3px solid #67e8f9;
   border-radius: 8px;
-  background: rgba(3, 7, 18, 0.8);
-  box-shadow: 0 12px 26px rgb(0 0 0 / 34%);
+  background: rgba(3, 7, 18, 0.72);
+  box-shadow: 0 10px 22px rgb(0 0 0 / 28%);
   color: #e2e8f0;
   font-size: 11px;
   line-height: 1.25;
@@ -170,7 +169,7 @@
 
 .nodeLabel:hover {
   border-color: rgba(255, 255, 255, 0.42);
-  box-shadow: 0 16px 36px rgb(0 0 0 / 42%), 0 0 18px rgba(56, 189, 248, 0.2);
+  box-shadow: 0 14px 28px rgb(0 0 0 / 36%);
 }
 
 .nodeLabel span {
@@ -330,7 +329,7 @@
   height: 8px;
   border-radius: 999px;
   background: #67e8f9;
-  box-shadow: 0 0 12px currentColor;
+  box-shadow: 0 0 6px currentColor;
 }
 
 .article {

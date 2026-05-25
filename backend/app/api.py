@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -115,12 +116,13 @@ def list_articles(
 ) -> ArticleListResponse:
     """Возвращает загруженные статьи с фильтрами."""
 
-    date_to_exclusive = date_to + timedelta(days=1) if date_to else None
+    date_from_utc = _local_date_start_utc(date_from) if date_from else None
+    date_to_exclusive = _local_date_start_utc(date_to, add_days=1) if date_to else None
     articles = query_articles(
         db=db,
         source_code=source_code,
         source_name=source_name,
-        date_from=date_from,
+        date_from=date_from_utc,
         date_to=date_to_exclusive,
         language=language,
         material_type=material_type,
@@ -152,6 +154,21 @@ def list_articles(
         for article in articles
     ]
     return ArticleListResponse(items=items, count=len(items))
+
+
+def _local_date_start_utc(value: date, add_days: int = 0) -> datetime:
+    """Переводит выбранный пользователем день в UTC-границу для БД.
+
+    В интерфейсе даты показываются в локальном времени, поэтому фильтр
+    "20-22 мая" должен совпадать с тем, что пользователь видит на карточках,
+    а не с UTC-днем в PostgreSQL.
+    """
+
+    local_timezone = ZoneInfo("Europe/Moscow")
+    local_start = datetime.combine(value, time.min, tzinfo=local_timezone)
+    if add_days:
+        local_start = local_start + timedelta(days=add_days)
+    return local_start.astimezone(timezone.utc)
 
 
 @router.get("/sources/{source_code}/profile", response_model=SourceProfileResponse)
