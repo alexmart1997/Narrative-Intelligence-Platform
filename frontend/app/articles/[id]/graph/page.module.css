@@ -95,7 +95,7 @@
 
 .shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(0, 1fr) 320px;
   min-height: 0;
 }
 
@@ -158,7 +158,7 @@
 }
 
 .modeBar {
-  top: 58px;
+  top: 18px;
   left: 18px;
   display: flex;
   flex-wrap: wrap;
@@ -186,15 +186,34 @@
 }
 
 .filterPanel {
-  top: 108px;
+  top: 66px;
   left: 18px;
-  display: grid;
-  gap: 8px;
-  width: 176px;
-  padding: 10px;
+  width: 178px;
+  padding: 0;
   color: #cbd5e1;
   font-size: 11px;
   font-weight: 800;
+}
+
+.filterPanel summary {
+  padding: 9px 11px;
+  color: #e2e8f0;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  list-style: none;
+  text-transform: uppercase;
+}
+
+.filterPanel summary::-webkit-details-marker {
+  display: none;
+}
+
+.filterBody {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
 }
 
 .filterPanel strong {
@@ -420,7 +439,9 @@
 }
 
 .detailPanel {
+  overflow-y: auto;
   min-height: calc(100vh - 85px);
+  max-height: calc(100vh - 85px);
   padding: 18px;
   border-left: 1px solid rgba(148, 163, 184, 0.16);
   background:
@@ -428,22 +449,32 @@
     #080b10;
 }
 
+.panelHeader {
+  margin-bottom: 18px;
+}
+
+.panelHeader span {
+  display: block;
+  margin-bottom: 4px;
+  color: #67e8f9;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
 .detailPanel h2 {
-  margin: 0 0 18px;
+  margin: 0;
   color: #f8fafc;
   font-size: 18px;
 }
 
 .narrativeSignals {
   display: grid;
-  gap: 12px;
-  margin-bottom: 18px;
-  padding: 14px;
-  border: 1px solid rgba(251, 113, 133, 0.22);
-  border-radius: 14px;
-  background:
-    radial-gradient(circle at top left, rgba(251, 113, 133, 0.12), transparent 44%),
-    rgba(15, 23, 42, 0.52);
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
 }
 
 .narrativeSignals span {
@@ -478,7 +509,7 @@
 .narrativeSignal {
   display: grid;
   gap: 5px;
-  padding: 10px;
+  padding: 9px;
   border: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 10px;
   background: rgba(3, 7, 18, 0.48);
@@ -520,7 +551,9 @@
 
 .details {
   display: grid;
-  gap: 14px;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
 }
 
 .badge,
@@ -542,17 +575,19 @@
 .details h3 {
   margin: 0;
   color: #f8fafc;
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1.3;
 }
 
-.details dl {
+.details dl,
+.keyFacts {
   display: grid;
   gap: 5px;
   margin: 0;
 }
 
-.details dt {
+.details dt,
+.keyFacts dt {
   margin-top: 8px;
   color: #64748b;
   font-size: 11px;
@@ -560,7 +595,8 @@
   text-transform: uppercase;
 }
 
-.details dd {
+.details dd,
+.keyFacts dd {
   margin: 0;
   color: #cbd5e1;
   font-size: 14px;

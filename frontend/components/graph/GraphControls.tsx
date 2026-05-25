@@ -12,8 +12,9 @@ export function GraphControls({
   updateFilter: <K extends keyof VisualFilters>(key: K, value: VisualFilters[K]) => void;
 }) {
   return (
-    <div className={styles.filterPanel}>
-      <strong>Фильтры</strong>
+    <details className={styles.filterPanel}>
+      <summary>Фильтры</summary>
+      <div className={styles.filterBody}>
       <label>
         <input type="checkbox" checked={filters.showEntities} onChange={(event) => updateFilter("showEntities", event.target.checked)} />
         сущности
@@ -56,6 +57,7 @@ export function GraphControls({
           onChange={(event) => updateFilter("labelDensity", Number(event.target.value))}
         />
       </label>
-    </div>
+      </div>
+    </details>
   );
 }

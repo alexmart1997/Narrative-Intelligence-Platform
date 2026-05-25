@@ -6,7 +6,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { GraphBreadcrumbs } from "@/components/graph/GraphBreadcrumbs";
 import { GraphControls } from "@/components/graph/GraphControls";
 import { GraphDetailsPanel, buildNarrativeSignals } from "@/components/graph/GraphDetailsPanel";
-import { GraphLegend } from "@/components/graph/GraphLegend";
 import { GraphModes } from "@/components/graph/GraphModes";
 import { graphNodeLabel } from "@/components/graph/graphEncoding";
 import { createThreeGraphScene } from "@/components/graph/graphScene";
@@ -29,7 +28,7 @@ const defaultFilters: VisualFilters = {
   showNarratives: true,
   showWeakEdges: false,
   confidenceThreshold: 0,
-  labelDensity: 0.52
+  labelDensity: 0.32
 };
 
 export default function ArticleGraphPage() {
@@ -109,7 +108,7 @@ export default function ArticleGraphPage() {
     try {
       const data = await getArticleGraph(articleId, {
         includeRelated: true,
-        limitRelated: 30,
+        limitRelated: 14,
         focusEntityId
       });
       setGraph(data);
@@ -214,20 +213,7 @@ export default function ArticleGraphPage() {
         <section className={styles.canvasWrap}>
           <GraphModes mode={graphMode} onChange={setGraphMode} styles={styles} />
           <GraphControls filters={filters} updateFilter={updateFilter} styles={styles} />
-          <GraphLegend styles={styles} />
-          <div className={styles.sceneMeta}>
-            <strong>Карта связей</strong>
-            <span>Размер = важность / плотность / уверенность</span>
-            <span>Прозрачность = confidence, толщина дуги = сила связи</span>
-            <span>Клик по статье = открыть ее граф · клик по сущности = переезд к новостям с ней</span>
-            <span>Hover мягко подсвечивает соседей · направление читается по дугам source → target</span>
-          </div>
           <GraphBreadcrumbs focusEntity={focusEntity} onReset={resetFocusEntity} styles={styles} />
-          <div className={styles.routeGuide}>
-            <strong>Маршруты к связанным новостям</strong>
-            <span className={styles.routeLine} />
-            <p>Основные дуги ведут к похожим статьям, общим сюжетам и новостям с выбранным объектом.</p>
-          </div>
           {graph && relatedCount === 0 ? (
             <div className={styles.insight}>
               Связанные статьи не показаны: похожесть ниже порога 0.55 или для соседних статей еще нет анализа.

@@ -89,10 +89,10 @@ export function translateEdge(label: string) {
 
 export function translateGraphMode(mode: GraphMode) {
   const labels: Record<GraphMode, string> = {
-    article: "Article",
-    similar: "Similar",
-    entity: "Entity",
-    compare: "Compare",
+    article: "Статья",
+    similar: "Похожие",
+    entity: "Сущность",
+    compare: "Сравнение",
   };
   return labels[mode];
 }
@@ -112,6 +112,8 @@ export function translateDataKey(key: string) {
     importance_score: "Важность",
     confidence: "Уверенность",
     same_event_probability: "Вероятность того же сюжета",
+    source: "Откуда",
+    target: "Куда",
     score: "Похожесть",
     similarity: "Сходство гипотезы",
     relation_type: "Тип отношения",

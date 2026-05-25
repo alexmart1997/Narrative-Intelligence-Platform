@@ -18,7 +18,7 @@ import {
   topDownCamera,
   type FlyTarget
 } from "./graphInteraction";
-import { GraphSceneOptions, NodeMesh, SceneNode, routeEdgeTypes } from "./types";
+import { GraphSceneOptions, NodeMesh, SceneNode } from "./types";
 
 export function createThreeGraphScene({
   activeArticleId,
@@ -53,7 +53,7 @@ export function createThreeGraphScene({
 
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  composer.addPass(new UnrealBloomPass(new THREE.Vector2(width, height), 0.16, 0.32, 0.42));
+  composer.addPass(new UnrealBloomPass(new THREE.Vector2(width, height), 0.11, 0.24, 0.5));
   composer.addPass(new OutputPass());
 
   const labelLayer = document.createElement("div");
@@ -200,7 +200,7 @@ function createNodeMesh(node: SceneNode, focused: boolean, selected: boolean) {
   const material = new THREE.MeshStandardMaterial({
     color: node.color,
     emissive: node.color,
-    emissiveIntensity: focused || selected ? 0.58 : node.type === "article" ? 0.34 : 0.2,
+    emissiveIntensity: focused || selected ? 0.42 : node.type === "article" ? 0.24 : 0.14,
     metalness: 0.15,
     roughness: 0.42,
     transparent: true,
@@ -210,11 +210,11 @@ function createNodeMesh(node: SceneNode, focused: boolean, selected: boolean) {
   mesh.position.copy(node.position);
 
   const glow = new THREE.Mesh(
-    new THREE.SphereGeometry(node.size * (focused || selected ? 1.8 : 1.45), 32, 24),
+    new THREE.SphereGeometry(node.size * (focused || selected ? 1.46 : 1.26), 32, 24),
     new THREE.MeshBasicMaterial({
       color: node.color,
       transparent: true,
-      opacity: focused || selected ? 0.055 : 0.018,
+      opacity: focused || selected ? 0.038 : 0.012,
       depthWrite: false
     })
   );
@@ -222,11 +222,11 @@ function createNodeMesh(node: SceneNode, focused: boolean, selected: boolean) {
 
   if (node.type === "article" || selected) {
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(node.size * (selected ? 1.95 : 1.65), selected ? 1.7 : 1.15, 10, 88),
+      new THREE.TorusGeometry(node.size * (selected ? 1.62 : 1.42), selected ? 0.95 : 0.65, 10, 88),
       new THREE.MeshBasicMaterial({
         color: selected ? "#fbbf24" : "#38bdf8",
         transparent: true,
-        opacity: selected ? 0.46 : 0.24,
+        opacity: selected ? 0.34 : 0.16,
         depthWrite: false
       })
     );
@@ -240,31 +240,16 @@ function createEdgeObject(source: SceneNode, target: SceneNode, edge: GraphEdge)
   const curve = edgeCurve(source, target);
   const color = edgePalette[edge.label] ?? "#7dd3fc";
   const strength = edgeStrength(edge);
-  const opacity = Math.max(0.18, Math.min(0.58, strength * 0.62));
-  if (routeEdgeTypes.has(edge.label)) {
-    const group = new THREE.Group();
-    group.userData.edgeId = edge.id;
-    const tube = new THREE.Mesh(
-      new THREE.TubeGeometry(curve, 52, (edge.label === "same_event_as" ? 1.45 : 1.05) + strength * 1.25, 8, false),
-      new THREE.MeshBasicMaterial({
-        color,
-        transparent: true,
-        opacity: Math.max(0.26, opacity),
-        depthWrite: false,
-      })
-    );
-    tube.userData.edgeId = edge.id;
-    group.add(tube);
-    return group;
-  }
-
+  const opacity = Math.max(0.12, Math.min(0.42, strength * 0.48));
   const geometry = new THREE.BufferGeometry().setFromPoints(curve.getPoints(36));
   const material = new THREE.LineBasicMaterial({
     color,
     transparent: true,
-    opacity: Math.max(0.16, opacity * 0.72)
+    opacity: Math.max(0.1, opacity * 0.76)
   });
-  return new THREE.Line(geometry, material);
+  const line = new THREE.Line(geometry, material);
+  line.userData.edgeId = edge.id;
+  return line;
 }
 
 function edgeCurve(source: SceneNode, target: SceneNode) {
@@ -274,7 +259,7 @@ function edgeCurve(source: SceneNode, target: SceneNode) {
 }
 
 function addStarField(scene: THREE.Scene, seed: number) {
-  const count = 220;
+  const count = 120;
   const random = seededRandom(seed);
   const positions = new Float32Array(count * 3);
   for (let index = 0; index < count; index += 1) {
@@ -355,8 +340,8 @@ function updateHtmlLabels(
     .sort((left, right) => right.priority - left.priority);
 
   const occupied: Array<{ left: number; right: number; top: number; bottom: number }> = [];
-  const maxLabels = Math.round(10 + labelDensity * 38 + Math.max(0, 820 - camera.position.length()) / 36);
-  const minPriority = 250 + (1 - labelDensity) * 245;
+  const maxLabels = Math.round(7 + labelDensity * 22 + Math.max(0, 760 - camera.position.length()) / 58);
+  const minPriority = 330 + (1 - labelDensity) * 265;
   let shown = 0;
 
   for (const candidate of candidates) {
@@ -393,7 +378,7 @@ function updateHtmlLabels(
 }
 
 function shortLabel(value: string) {
-  return value.length > 58 ? `${value.slice(0, 55)}...` : value;
+  return value.length > 48 ? `${value.slice(0, 45)}...` : value;
 }
 
 function escapeHtml(value: string) {
