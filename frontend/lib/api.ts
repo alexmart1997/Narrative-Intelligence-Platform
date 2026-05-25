@@ -257,13 +257,21 @@ type ArticleFilters = {
 };
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers
-    }
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 18000);
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...options,
+      signal: options?.signal ?? controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers
+      }
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const errorText = await response.text();

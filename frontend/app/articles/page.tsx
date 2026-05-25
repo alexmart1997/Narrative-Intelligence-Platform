@@ -88,7 +88,8 @@ function ArticlesContent() {
       if (requestId !== requestSeq.current) return;
       setSources(sourceList);
       setArticles(filteredArticles);
-      await hydrateAnalyses(filteredArticles, requestId);
+      setLoading(false);
+      void hydrateAnalyses(filteredArticles, requestId);
     } catch (caught) {
       if (requestId !== requestSeq.current) return;
       setError(caught instanceof Error ? caught.message : "Не удалось загрузить статьи");
