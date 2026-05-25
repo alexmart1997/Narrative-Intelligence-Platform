@@ -13,7 +13,9 @@ import styles from "./page.module.css";
 
 type ArticleBrief = {
   id: number;
-  title: string;
+  russianTitle: string;
+  originalTitle: string;
+  originalUrl: string | null;
   sourceName: string;
 };
 
@@ -61,7 +63,9 @@ export default function ComparePage() {
               ? graphToBrief(item.article_id, targetGraphs[index] as ArticleGraphResponse)
               : {
                   id: item.article_id,
-                  title: `Article ${item.article_id}`,
+                  russianTitle: `Статья ${item.article_id}`,
+                  originalTitle: `Article ${item.article_id}`,
+                  originalUrl: null,
                   sourceName: `Source ${item.article_id}`
                 }
           }))
@@ -89,7 +93,7 @@ export default function ComparePage() {
             Назад к статьям
           </Link>
           <p className={styles.eyebrow}>Сравнение освещения</p>
-          <h1>{sourceArticle?.title ?? `Article ${params.id}`}</h1>
+          <h1>{sourceArticle ? getRussianLead(sourceArticle, cards[0]?.item.comparison.source_1_framing) : `Статья ${params.id}`}</h1>
         </div>
         <button className={styles.primaryButton} onClick={() => router.push(`/articles/${articleId}/graph`)}>
           Открыть граф
@@ -186,6 +190,11 @@ function SourceColumn({
   sympathy: string;
   title: string;
 }) {
+  const [showOriginal, setShowOriginal] = useState(false);
+  const russianLead = getRussianLead(article, framing);
+  const hasOriginal = Boolean(article.originalTitle.trim());
+  const leadText = showOriginal ? article.originalTitle : russianLead;
+
   return (
     <section className={styles.sourceColumn}>
       <div className={styles.sourceHead}>
@@ -193,11 +202,23 @@ function SourceColumn({
           <span>{title}</span>
           <h3>{article.sourceName}</h3>
         </div>
-        <Link className={styles.graphLink} href={`/articles/${article.id}/graph`}>
-          Граф
-        </Link>
+        <div className={styles.sourceActions}>
+          {hasOriginal ? (
+            <button className={styles.textToggle} type="button" onClick={() => setShowOriginal((current) => !current)}>
+              {showOriginal ? "На русском" : "Оригинал"}
+            </button>
+          ) : null}
+          <Link className={styles.graphLink} href={`/articles/${article.id}/graph`}>
+            Граф
+          </Link>
+        </div>
       </div>
-      <p className={styles.articleTitle}>{article.title}</p>
+      <p className={styles.articleTitle}>{leadText}</p>
+      {showOriginal && article.originalUrl ? (
+        <a className={styles.originalLink} href={article.originalUrl} rel="noreferrer" target="_blank">
+          Открыть публикацию источника
+        </a>
+      ) : null}
       <InfoBlock label="Фрейминг" value={framing} />
       <InfoBlock label="Симпатия" value={sympathy} tone={sentimentTone(sympathy)} />
       <InfoBlock label="Критика" value={criticism} tone={sentimentTone(criticism, true)} />
@@ -216,13 +237,15 @@ function Metric({ label, tone, value }: { label: string; tone: string; value: nu
 }
 
 function InfoBlock({ label, tone, value }: { label: string; tone?: string; value: string }) {
+  const displayValue = normalizeRussianText(value);
+
   return (
     <div className={styles.infoBlock}>
       <span>
         {label}
         {tone ? <em className={`${styles.smallBadge} ${styles[tone]}`}>{tone}</em> : null}
       </span>
-      <p>{value || "Не указано"}</p>
+      <p>{displayValue || "Не указано"}</p>
     </div>
   );
 }
@@ -249,17 +272,76 @@ function FactList({ emphasis, items, title }: { emphasis?: boolean; items: strin
 function graphToBrief(articleId: number, graph: ArticleGraphResponse): ArticleBrief {
   const article = graph.nodes.find((node) => node.type === "article");
   const source = graph.nodes.find((node) => node.type === "source");
+  const displayLabel = graphNodeDisplayLabel(article);
+  const originalLabel = article?.label?.trim() ?? "";
+  const originalUrl = graphNodeString(article, "url");
+
   return {
     id: articleId,
-    title: graphNodeLabel(article) || `Статья ${articleId}`,
+    russianTitle: displayLabel || originalLabel || `Статья ${articleId}`,
+    originalTitle: originalLabel || displayLabel || `Article ${articleId}`,
+    originalUrl,
     sourceName: source?.label ?? `Source ${articleId}`
   };
 }
 
-function graphNodeLabel(node: ArticleGraphResponse["nodes"][number] | undefined) {
+function graphNodeDisplayLabel(node: ArticleGraphResponse["nodes"][number] | undefined) {
   if (!node) return "";
   const displayLabel = node.data.display_label;
   return typeof displayLabel === "string" && displayLabel.trim() ? displayLabel : node.label;
+}
+
+function graphNodeString(node: ArticleGraphResponse["nodes"][number] | undefined, key: string) {
+  const value = node?.data[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function getRussianLead(article: ArticleBrief, russianFallback: string | undefined) {
+  const title = article.russianTitle.trim();
+  if (title && hasCyrillic(title)) return title;
+
+  const fallback = russianFallback?.trim() ?? "";
+  if (fallback && hasCyrillic(fallback)) return fallback;
+
+  return title || article.originalTitle || `Статья ${article.id}`;
+}
+
+function hasCyrillic(value: string) {
+  return /[А-Яа-яЁё]/.test(value);
+}
+
+function normalizeRussianText(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (hasCyrillic(trimmed)) return trimmed;
+
+  const replacements: Array<[RegExp, string]> = [
+    [/\bUS President Donald Trump\b/gi, "президент США Дональд Трамп"],
+    [/\bPresident Donald Trump\b/gi, "президент Дональд Трамп"],
+    [/\bDonald Trump\b/gi, "Дональд Трамп"],
+    [/\bPakistan's Prime Minister Shehbaz Sharif\b/gi, "премьер-министр Пакистана Шехбаз Шариф"],
+    [/\bShehbaz Sharif\b/gi, "Шехбаз Шариф"],
+    [/\bIranian foreign ministry spokesman Esmail Baghaei\b/gi, "представитель МИД Ирана Эсмаил Багаи"],
+    [/\bEsmail Baghaei\b/gi, "Эсмаил Багаи"],
+    [/\bIran's control over the Strait of Hormuz\b/gi, "контроль Ирана над Ормузским проливом"],
+    [/\bStrait of Hormuz\b/gi, "Ормузский пролив"],
+    [/\bUnited States\b/gi, "США"],
+    [/\bUSA\b/gi, "США"],
+    [/\bUS\b/gi, "США"],
+    [/\bIranian\b/gi, "иранский"],
+    [/\bIran\b/gi, "Иран"],
+    [/\bPakistan\b/gi, "Пакистан"],
+    [/\bRussia\b/gi, "Россия"],
+    [/\bUkraine\b/gi, "Украина"],
+    [/\bIsrael\b/gi, "Израиль"],
+    [/\bHamas\b/gi, "ХАМАС"],
+    [/\bNATO\b/gi, "НАТО"],
+    [/\bPrime Minister\b/gi, "премьер-министр"],
+    [/\bPresident\b/gi, "президент"],
+    [/\bforeign ministry spokesman\b/gi, "представитель МИД"]
+  ];
+
+  return replacements.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), trimmed);
 }
 
 function formatPercent(value: number) {

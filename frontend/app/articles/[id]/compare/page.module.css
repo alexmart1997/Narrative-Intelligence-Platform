@@ -218,6 +218,35 @@
   gap: 12px;
 }
 
+.sourceActions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.textToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(103, 232, 249, 0.24);
+  border-radius: 999px;
+  background: rgba(8, 47, 73, 0.46);
+  color: #a5f3fc;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.textToggle:hover,
+.graphLink:hover {
+  border-color: rgba(103, 232, 249, 0.48);
+  background: rgba(14, 116, 144, 0.24);
+}
+
 .sourceHead h3 {
   margin: 4px 0 0;
   color: #f8fafc;
@@ -229,6 +258,18 @@
   color: #cbd5e1;
   font-weight: 850;
   line-height: 1.35;
+}
+
+.originalLink {
+  width: fit-content;
+  color: #7dd3fc;
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.originalLink:hover {
+  color: #bae6fd;
 }
 
 .infoBlock {

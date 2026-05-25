@@ -8,32 +8,46 @@ const capabilities = [
   "Сравнение освещения"
 ];
 
+const signals = [
+  { label: "Coverage", value: "Article Flow" },
+  { label: "Similarity", value: "Story Match" },
+  { label: "Narrative", value: "Frame Shift" }
+];
+
 export default function Home() {
   return (
     <main className={styles.page}>
       <section className={styles.hero}>
         <div className={styles.copy}>
-          <p className={styles.eyebrow}>локальная аналитическая платформа</p>
+          <p className={styles.eyebrow}>Political Media Intelligence</p>
           <h1>Narrative Intelligence</h1>
           <p>
-            Локальный инструмент для точного анализа новостей: что произошло,
-            как текст это подает, какие материалы действительно похожи и чем
-            отличается освещение одного сюжета.
+            Платформа для анализа политических новостей: выделяет смысл,
+            находит действительно похожие материалы, строит граф связей и
+            показывает, как разные источники описывают один сюжет.
           </p>
           <nav className={styles.actions} aria-label="Основные разделы">
-            <Link className={styles.primary} href="/articles">Articles</Link>
+            <Link className={styles.primary} href="/articles">Открыть рабочее пространство</Link>
           </nav>
         </div>
 
         <div className={styles.panel}>
           <div className={styles.panelHeader}>
-            <span>Focused MVP</span>
-            <strong>локально</strong>
+            <span>Intelligence Console</span>
+            <strong>active</strong>
           </div>
           <div className={styles.signal}>
             <i />
             <i />
             <i />
+          </div>
+          <div className={styles.signalGrid}>
+            {signals.map((item) => (
+              <div key={item.label}>
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+              </div>
+            ))}
           </div>
           <ul>
             {capabilities.map((item) => <li key={item}>{item}</li>)}
