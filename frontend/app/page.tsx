@@ -2,12 +2,10 @@ import Link from "next/link";
 import styles from "./page.module.css";
 
 const capabilities = [
-  "Сбор новостей",
-  "LLM-анализ",
-  "События",
-  "Нарративы",
-  "3D-графы",
-  "Профили источников"
+  "Анализ статьи",
+  "Похожие материалы",
+  "Граф связей",
+  "Сравнение освещения"
 ];
 
 export default function Home() {
@@ -18,19 +16,19 @@ export default function Home() {
           <p className={styles.eyebrow}>локальная аналитическая платформа</p>
           <h1>Narrative Intelligence</h1>
           <p>
-            Спокойный command center для анализа политических новостей: источники,
-            события, участники, фрейминг, нарративы и доказательные цитаты в одном месте.
+            Локальный инструмент для точного анализа новостей: что произошло,
+            как текст это подает, какие материалы действительно похожи и чем
+            отличается освещение одного сюжета.
           </p>
           <nav className={styles.actions} aria-label="Основные разделы">
-            <Link className={styles.primary} href="/articles">Открыть статьи</Link>
-            <Link href="/narratives">Нарративы</Link>
+            <Link className={styles.primary} href="/articles">Articles</Link>
           </nav>
         </div>
 
         <div className={styles.panel}>
           <div className={styles.panelHeader}>
-            <span>Local stack</span>
-            <strong>без платных API</strong>
+            <span>Focused MVP</span>
+            <strong>локально</strong>
           </div>
           <div className={styles.signal}>
             <i />

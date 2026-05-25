@@ -77,7 +77,7 @@ const nodeTypes = [
   { type: "country", label: "Страна" },
   { type: "location", label: "Локация" },
   { type: "concept", label: "Концепт" },
-  { type: "narrative", label: "Нарратив" }
+  { type: "narrative", label: "Гипотеза" }
 ];
 
 const edgeLabels: Record<string, string> = {
@@ -86,10 +86,10 @@ const edgeLabels: Record<string, string> = {
   relates_to: "связано с",
   sympathizes_with: "симпатизирует",
   criticizes: "критикует",
-  supports_narrative: "поддерживает нарратив",
-  same_event_as: "то же событие",
+  supports_narrative: "поддерживает гипотезу",
+  same_event_as: "тот же сюжет",
   similar_to: "похожая статья",
-  shares_narrative: "общий нарратив",
+  shares_narrative: "общая гипотеза",
   entity_in_article: "содержит объект"
 };
 
@@ -326,7 +326,7 @@ export default function ArticleGraphPage() {
             </label>
             <label>
               <input type="checkbox" checked={filters.showNarratives} onChange={(event) => updateFilter("showNarratives", event.target.checked)} />
-              нарративы
+              гипотезы
             </label>
             <label>
               <input type="checkbox" checked={filters.showWeakEdges} onChange={(event) => updateFilter("showWeakEdges", event.target.checked)} />
@@ -380,7 +380,7 @@ export default function ArticleGraphPage() {
           <div className={styles.routeGuide}>
             <strong>Маршруты к связанным новостям</strong>
             <span className={styles.routeLine} />
-            <p>Светящиеся дуги ведут к похожим статьям, общим событиям и новостям с выбранным объектом.</p>
+            <p>Светящиеся дуги ведут к похожим статьям, общим сюжетам и новостям с выбранным объектом.</p>
           </div>
           {graph && relatedCount === 0 ? (
             <div className={styles.insight}>
@@ -388,7 +388,7 @@ export default function ArticleGraphPage() {
             </div>
           ) : null}
           {loading ? <div className={styles.state}>Загружаю 3D-граф...</div> : null}
-          {processing ? <div className={styles.state}>Выполняю анализ, embedding и event matching...</div> : null}
+          {processing ? <div className={styles.state}>Выполняю анализ, embedding и подготовку служебных связей...</div> : null}
           {error ? (
             <div className={styles.error}>
               <strong>{error}</strong>
@@ -407,9 +407,9 @@ export default function ArticleGraphPage() {
           <NarrativeSignals signals={narrativeSignals} />
           <div className={styles.readingGuide}>
             <strong>Как читать сцену</strong>
-            <p>Шарик = объект анализа: статья, источник, участник или нарратив.</p>
-            <p>Размер статьи = плотность: сколько вокруг нее события, evidence, сущностей и связей.</p>
-            <p>Дуга = тип связи. Яркие дуги показывают то же событие или общий нарратив.</p>
+            <p>Шарик = объект анализа: статья, источник, участник или гипотеза.</p>
+            <p>Размер статьи = плотность: сколько вокруг нее evidence, сущностей и связей.</p>
+            <p>Дуга = тип связи. Яркие дуги показывают тот же сюжет, похожую статью или общую гипотезу.</p>
           </div>
           {selectedNode ? <NodeDetails node={selectedNode} currentArticleId={activeArticleId} /> : null}
           {selectedEdge ? <EdgeDetails edge={selectedEdge} /> : null}
@@ -1200,7 +1200,7 @@ function NarrativeSignals({
   return (
     <section className={styles.narrativeSignals}>
       <div>
-        <span>Нарративный слой</span>
+        <span>Гипотезы</span>
         <h3>Общие линии графа</h3>
       </div>
       {signals.length > 0 ? (
@@ -1217,8 +1217,8 @@ function NarrativeSignals({
         </div>
       ) : (
         <p>
-          Для этой сцены пока нет общего нарратива. Запусти анализ и discovery, чтобы система
-          связала статьи в смысловые линии.
+          Для этой сцены пока нет общей гипотезы. Запусти анализ статьи, чтобы система
+          показала смысловые линии прямо внутри графа.
         </p>
       )}
     </section>
@@ -1290,8 +1290,8 @@ function translateEdge(label: string) {
 function translateGraphMode(mode: GraphMode) {
   const labels: Record<GraphMode, string> = {
     article: "Статья",
-    event: "Событие",
-    narrative: "Нарратив",
+    event: "Сюжет",
+    narrative: "Гипотеза",
     divergence: "Расхождения",
   };
   return labels[mode];
@@ -1304,22 +1304,22 @@ function translateDataKey(key: string) {
     source_name: "Источник",
     entity_id: "ID сущности",
     analysis_id: "ID анализа",
-    event_id: "ID события",
+    event_id: "ID сюжета",
     url: "Ссылка",
     published_at: "Дата публикации",
     language: "Язык",
     role: "Роль",
     importance_score: "Важность",
     confidence: "Уверенность",
-    same_event_probability: "Вероятность того же события",
+    same_event_probability: "Вероятность того же сюжета",
     score: "Похожесть",
-    similarity: "Сходство нарратива",
+    similarity: "Сходство гипотезы",
     relation_type: "Тип отношения",
     description: "Описание",
     relation_hint: "Причина связи",
     density_score: "Плотность",
-    event_article_count: "Статей в событии",
-    narrative_evidence_count: "Доказательств нарратива",
+    event_article_count: "Статей в сюжете",
+    narrative_evidence_count: "Доказательств гипотезы",
     entity_count: "Сущностей",
     relation_count: "Отношений",
     synthetic: "Создано из вывода LLM",

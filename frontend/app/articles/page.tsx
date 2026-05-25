@@ -1,22 +1,18 @@
 "use client";
 
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArticleAnalysisResponse,
   ArticleListItem,
-  NarrativeListItem,
   SimilarArticleItem,
   SourceInfo,
   analyzeArticle,
   detectArticleEvent,
-  discoverNarratives,
   embedArticle,
   getArticleAnalysis,
   getArticles,
-  getNarratives,
   getSimilarArticles,
   getSources,
   precomputeIntelligence
@@ -28,10 +24,10 @@ type ActionState = {
   action: ArticleAction;
 } | null;
 
-type ArticleAction = "analysis" | "analyze" | "compare" | "event" | "graph" | "similar";
+type ArticleAction = "analysis" | "analyze" | "compare" | "graph" | "similar";
 type DensityMode = "compact" | "comfortable" | "analyst";
 type StatusFilter = "" | "analyzed" | "not_analyzed";
-type GlobalAction = "discover_narratives" | "precompute" | null;
+type GlobalAction = "precompute" | null;
 
 type AnalysisMap = Record<number, ArticleAnalysisResponse | null>;
 
@@ -52,7 +48,6 @@ function ArticlesContent() {
   const searchParams = useSearchParams();
   const [articles, setArticles] = useState<ArticleListItem[]>([]);
   const [analysisByArticle, setAnalysisByArticle] = useState<AnalysisMap>({});
-  const [narratives, setNarratives] = useState<NarrativeListItem[]>([]);
   const [sources, setSources] = useState<SourceInfo[]>([]);
   const [sourceCode, setSourceCode] = useState("");
   const [language, setLanguage] = useState("");
@@ -85,10 +80,8 @@ function ArticlesContent() {
     });
   }, [analysisByArticle, articles, sentimentFilter, statusFilter]);
 
-  const metrics = useMemo(() => buildMetrics(visibleArticles, sources, narratives, analysisByArticle), [
+  const metrics = useMemo(() => buildMetrics(visibleArticles, analysisByArticle), [
     analysisByArticle,
-    narratives,
-    sources,
     visibleArticles
   ]);
   const timeline = useMemo(() => buildTimeline(visibleArticles), [visibleArticles]);
@@ -107,7 +100,7 @@ function ArticlesContent() {
     setLoading(true);
     setError(null);
     try {
-      const [sourceList, articleList, narrativeList] = await Promise.all([
+      const [sourceList, articleList] = await Promise.all([
         getSources(),
         getArticles({
           sourceCode,
@@ -118,13 +111,11 @@ function ArticlesContent() {
           dateFrom,
           dateTo,
           materialType
-        }),
-        getNarratives().catch(() => [] as NarrativeListItem[])
+        })
       ]);
       const uniqueArticles = deduplicateArticleList(articleList.items);
       setSources(sourceList);
       setArticles(uniqueArticles);
-      setNarratives(narrativeList);
       await hydrateAnalyses(uniqueArticles);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось загрузить статьи");
@@ -173,19 +164,19 @@ function ArticlesContent() {
 
   async function handleAnalyze(articleId: number) {
     setActionState({ articleId, action: "analyze" });
-    setActionMessage("Running LLM analysis...");
+    setActionMessage("Запускаю LLM-анализ статьи...");
     setError(null);
     setNoticeByArticle((current) => ({ ...current, [articleId]: "" }));
     try {
       await analyzeArticle(articleId);
-      setActionMessage("Creating vector embedding...");
+      setActionMessage("Создаю embedding для поиска похожих материалов...");
       await embedArticle(articleId);
-      setActionMessage("Detecting event link...");
+      setActionMessage("Готовлю служебные связи для графа...");
       await detectArticleEvent(articleId);
       await loadArticles();
       setNoticeByArticle((current) => ({
         ...current,
-        [articleId]: "Analysis complete: entities, narrative, embedding and event matching were updated."
+        [articleId]: "Готово: анализ, сущности, нарративная гипотеза, похожие материалы и граф обновлены."
       }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось выполнить анализ");
@@ -211,7 +202,7 @@ function ArticlesContent() {
   async function handlePrecompute() {
     setGlobalAction("precompute");
     setError(null);
-    setActionMessage("Precomputing graph and similarity cache...");
+    setActionMessage("Заранее готовлю похожие материалы и графы...");
     try {
       const result = await precomputeIntelligence({
         dateFrom,
@@ -220,25 +211,9 @@ function ArticlesContent() {
         language,
         limit: 100
       });
-      setActionMessage(`Precompute complete: ${result.cached_graphs} graphs, ${result.cached_similar} similarity caches.`);
+      setActionMessage(`Готово: ${result.cached_graphs} графов, ${result.cached_similar} кэшей похожих материалов.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось выполнить precompute");
-    } finally {
-      setGlobalAction(null);
-    }
-  }
-
-  async function handleDiscoverNarratives() {
-    setGlobalAction("discover_narratives");
-    setError(null);
-    setActionMessage("Discovering narratives across analyzed articles...");
-    try {
-      const result = await discoverNarratives();
-      setActionMessage(`Narrative discovery complete: ${result.created_narratives} narratives from ${result.total_analyses} analyses.`);
-      const narrativeList = await getNarratives().catch(() => [] as NarrativeListItem[]);
-      setNarratives(narrativeList);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Не удалось найти нарративы");
     } finally {
       setGlobalAction(null);
     }
@@ -260,22 +235,18 @@ function ArticlesContent() {
       <section className={styles.commandBar}>
         <div className={styles.brandBlock}>
           <p className={styles.eyebrow}>Narrative Intelligence Platform</p>
-          <h1>Центр анализа новостей</h1>
-          <span>Источники, события, участники, фрейминг и нарративы в одном спокойном аналитическом потоке.</span>
+          <h1>Articles</h1>
+          <span>Сфокусированный рабочий поток: анализ статьи, подбор похожих, граф связей и сравнение освещения.</span>
         </div>
         <div className={styles.commandSearch}>
           <button className={styles.searchShell} onClick={() => setShowPalette(true)}>
-            <span>Поиск по статьям, событиям, участникам и нарративам...</span>
+            <span>Поиск по статьям, участникам, фреймам и темам...</span>
             <kbd>Cmd K</kbd>
           </button>
           <div className={styles.quickActions}>
             <button onClick={handlePrecompute} disabled={globalAction !== null}>
-              {globalAction === "precompute" ? "Считаю..." : "Подготовить графы"}
+              {globalAction === "precompute" ? "Готовлю..." : "Подготовить похожие и графы"}
             </button>
-            <button onClick={handleDiscoverNarratives} disabled={globalAction !== null}>
-              {globalAction === "discover_narratives" ? "Ищу..." : "Найти нарративы"}
-            </button>
-            <Link href="/narratives">Нарративы</Link>
           </div>
         </div>
         <div className={styles.densitySwitch} aria-label="Density switch">
@@ -416,7 +387,6 @@ function ArticlesContent() {
                 onAnalyze={handleAnalyze}
                 onCompare={(id) => router.push(`/articles/${id}/compare`)}
                 onEvidence={(id) => router.push(`/articles/${id}/analysis`)}
-                onEvent={(eventId) => router.push(`/events/${eventId}`)}
                 onGraph={(id) => router.push(`/articles/${id}/graph`)}
                 onSimilar={handleFindSimilar}
                 similar={similarByArticle[article.id]}
@@ -426,35 +396,29 @@ function ArticlesContent() {
         </section>
 
         <aside className={styles.insightPanel}>
-          <InsightCard title="Главное событие" kicker="Активный фокус">
+          <InsightCard title="Текущий материал" kicker="Рабочий фокус">
             {spotlight ? (
               <>
                 <strong>{spotlight.title}</strong>
                 <p>{spotlight.source_name} · {formatDate(spotlight.published_at)}</p>
-                <span className={spotlight.has_event ? styles.positiveBadge : styles.neutralBadge}>
-                  {spotlight.has_event ? "событие связано" : "ожидает события"}
+                <span className={spotlight.has_analysis ? styles.positiveBadge : styles.neutralBadge}>
+                  {spotlight.has_analysis ? "готов к графу и сравнению" : "нужен анализ"}
                 </span>
               </>
-            ) : <EmptyMini label="No event signal yet" />}
+            ) : <EmptyMini label="Нет материала в текущем фильтре" />}
           </InsightCard>
 
-          <InsightCard title="Топ нарративов" kicker="Гипотезы">
+          <InsightCard title="Нарративные гипотезы" kicker="Из анализа статей">
             {topNarrativeHypotheses.length > 0 ? (
               <div className={styles.rankList}>
                 {topNarrativeHypotheses.map((item) => (
                   <span key={item.label}><b>{item.count}</b>{truncate(item.label, 82)}</span>
                 ))}
               </div>
-            ) : narratives.length > 0 ? (
-              <div className={styles.rankList}>
-                {narratives.slice(0, 5).map((item) => (
-                  <Link href={`/narratives/${item.id}/graph`} key={item.id}><b>{item.evidence_count}</b>{truncate(item.title, 82)}</Link>
-                ))}
-              </div>
-            ) : <EmptyMini label="Run narrative discovery to populate this panel" />}
+            ) : <EmptyMini label="Появятся после анализа статей" />}
           </InsightCard>
 
-          <InsightCard title="Источники" kicker="Распределение">
+          <InsightCard title="Источники" kicker="Распределение в ленте">
             {sourceMix.length > 0 ? (
               <div className={styles.sourceMix}>
                 {sourceMix.map((item) => (
@@ -465,13 +429,13 @@ function ArticlesContent() {
                   </div>
                 ))}
               </div>
-            ) : <EmptyMini label="No sources in current filter" />}
+            ) : <EmptyMini label="Нет источников в текущем фильтре" />}
           </InsightCard>
 
           <InsightCard title="Сигнал системы" kicker="AI insight">
             <div className={styles.callout}>
               <strong>{buildAiInsight(visibleArticles, analysisByArticle)}</strong>
-              <p>Используй сравнение и 3D-граф, чтобы увидеть различия фрейминга и общих участников.</p>
+              <p>Основные действия MVP: анализ, похожие материалы, граф связей и сравнение освещения.</p>
             </div>
           </InsightCard>
         </aside>
@@ -501,7 +465,6 @@ function ArticleCard({
   onAnalyze,
   onCompare,
   onEvidence,
-  onEvent,
   onGraph,
   onSimilar,
   similar
@@ -513,7 +476,6 @@ function ArticleCard({
   onAnalyze: (articleId: number) => void;
   onCompare: (articleId: number) => void;
   onEvidence: (articleId: number) => void;
-  onEvent: (eventId: number) => void;
   onGraph: (articleId: number) => void;
   onSimilar: (articleId: number) => void;
   similar?: SimilarArticleItem[];
@@ -523,16 +485,13 @@ function ArticleCard({
   return (
     <article className={styles.articleCard}>
       <div className={styles.cardTopline}>
-        {article.source_code ? (
-          <Link className={styles.sourceBadge} href={`/sources/${article.source_code}/profile`}>{article.source_name}</Link>
-        ) : <span className={styles.sourceBadge}>{article.source_name}</span>}
+        <span className={styles.sourceBadge}>{article.source_name}</span>
         <span>{formatDate(article.published_at)}</span>
         <span>{article.language}</span>
         <span>{article.material_type}</span>
         <span className={article.has_analysis ? styles.positiveBadge : styles.warningBadge}>
-          {article.has_analysis ? "анализ есть" : "без анализа"}
+          {articleReadinessLabel(article)}
         </span>
-        {article.has_event ? <span className={styles.eventBadge}>событие</span> : null}
       </div>
 
       <h3>{localizedArticleTitle(article, analysis)}</h3>
@@ -554,19 +513,18 @@ function ArticleCard({
         <button onClick={() => onAnalyze(article.id)} disabled={busy}>
           {actionState?.articleId === article.id && actionState.action === "analyze" ? "Анализ..." : "Анализ"}
         </button>
-        <button onClick={() => onGraph(article.id)} disabled={busy}>3D-граф</button>
-        <button onClick={() => onCompare(article.id)} disabled={busy}>Сравнить</button>
-        <button onClick={() => article.event_id && onEvent(article.event_id)} disabled={busy || !article.event_id}>Событие</button>
+        <button onClick={() => onSimilar(article.id)} disabled={busy || !article.has_analysis}>Похожие</button>
+        <button onClick={() => onGraph(article.id)} disabled={busy || !article.has_analysis}>Граф</button>
+        <button onClick={() => onCompare(article.id)} disabled={busy || !article.has_analysis}>Сравнить</button>
         <button onClick={() => onEvidence(article.id)} disabled={busy || !article.has_analysis}>Доказательства</button>
-        <button onClick={() => onSimilar(article.id)} disabled={busy}>Похожие</button>
       </div>
 
       {notice ? <div className={styles.successState}>{notice}</div> : null}
       {similar ? (
         <div className={styles.similarBox}>
-          <strong>Similar coverage</strong>
+          <strong>Похожие материалы</strong>
           {similar.length === 0 ? (
-            <p>No similar articles found. Create embeddings first.</p>
+            <p>Реально похожих материалов не найдено. Это нормально: система не притягивает общую тему без фактической связи.</p>
           ) : similar.slice(0, 3).map((item) => (
             <span key={`${article.id}-${item.article_id}`}>
               {item.source_name} · {truncate(item.title, 92)} · {item.score.toFixed(3)}
@@ -635,13 +593,18 @@ function CommandPalette({
             autoFocus
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search articles, events, entities, narratives..."
+            placeholder="Поиск по статьям, участникам и фреймам..."
           />
           <kbd>Esc</kbd>
         </div>
         <div className={styles.paletteGroup}>
-          <button onClick={() => onNavigate("/narratives")}>Open narratives</button>
-          <button onClick={() => onNavigate("/articles")}>Reset article feed</button>
+          <button onClick={() => onNavigate("/articles")}>Статьи</button>
+          {matches[0] ? (
+            <>
+              <button onClick={() => onNavigate(`/articles/${matches[0].id}/graph`)}>Граф первого совпадения</button>
+              <button onClick={() => onNavigate(`/articles/${matches[0].id}/compare`)}>Сравнить первое совпадение</button>
+            </>
+          ) : null}
         </div>
         <div className={styles.paletteResults}>
           {matches.map((article) => (
@@ -683,9 +646,9 @@ function SkeletonFeed() {
 function EmptyState({ onReset }: { onReset: () => void }) {
   return (
     <div className={styles.emptyState}>
-      <strong>No articles found</strong>
-      <p>Adjust filters, import sources, or run ingestion for a broader period.</p>
-      <button onClick={onReset}>Reset filters</button>
+      <strong>Статьи не найдены</strong>
+      <p>Измени фильтры или загрузи материалы за более широкий период.</p>
+      <button onClick={onReset}>Сбросить фильтры</button>
     </div>
   );
 }
@@ -720,23 +683,22 @@ function articleDedupeKey(item: ArticleListItem) {
 
 function buildMetrics(
   articles: ArticleListItem[],
-  sources: SourceInfo[],
-  narratives: NarrativeListItem[],
   analysisByArticle: AnalysisMap
 ) {
   const analyzed = articles.filter((article) => article.has_analysis).length;
+  const unprocessed = articles.length - analyzed;
   const avgConfidence = average(
     Object.values(analysisByArticle)
       .map((analysis) => analysis?.confidence)
       .filter((value): value is number => typeof value === "number")
   );
   return [
-    { icon: "AR", label: "Articles", value: articles.length.toString(), trend: `${analyzed} analyzed` },
-    { icon: "EV", label: "Events", value: articles.filter((article) => article.has_event).length.toString(), trend: "linked coverage" },
-    { icon: "NR", label: "Narratives", value: narratives.length ? narratives.length.toString() : "—", trend: narratives.length ? "discovered" : "run discovery" },
-    { icon: "SO", label: "Sources", value: sources.length ? sources.length.toString() : "—", trend: "available adapters" },
-    { icon: "AI", label: "Unprocessed", value: articles.filter((article) => !article.has_analysis).length.toString(), trend: "need analysis" },
-    { icon: "CF", label: "Avg Confidence", value: Number.isFinite(avgConfidence) ? formatPercent(avgConfidence) : "—", trend: "analysis confidence" }
+    { icon: "AR", label: "Статьи", value: articles.length.toString(), trend: "в текущем фильтре" },
+    { icon: "AI", label: "Анализ", value: analyzed.toString(), trend: "готово для работы" },
+    { icon: "SM", label: "Похожие", value: analyzed.toString(), trend: "можно искать связи" },
+    { icon: "GR", label: "Графы", value: analyzed.toString(), trend: "можно открыть 3D-граф" },
+    { icon: "NW", label: "Без анализа", value: unprocessed.toString(), trend: "нужно обработать" },
+    { icon: "CF", label: "Уверенность", value: Number.isFinite(avgConfidence) ? formatPercent(avgConfidence) : "—", trend: "средняя по анализу" }
   ];
 }
 
@@ -765,8 +727,8 @@ function topCounts(values: string[], limit: number) {
 
 function pickSpotlight(articles: ArticleListItem[]) {
   return [...articles].sort((left, right) => {
-    const eventDelta = Number(right.has_event) - Number(left.has_event);
-    if (eventDelta) return eventDelta;
+    const analyzedDelta = Number(right.has_analysis) - Number(left.has_analysis);
+    if (analyzedDelta) return analyzedDelta;
     return new Date(right.published_at).getTime() - new Date(left.published_at).getTime();
   })[0];
 }
@@ -775,12 +737,16 @@ function buildAiInsight(articles: ArticleListItem[], analysisByArticle: Analysis
   const sentiments = new Set(Object.values(analysisByArticle).map((analysis) => analysis?.sentiment).filter(Boolean));
   const narratives = new Set(Object.values(analysisByArticle).map((analysis) => analysis?.narrative_hypothesis).filter(Boolean));
   if (sentiments.size >= 3 || narratives.size >= 3) {
-    return "High narrative divergence detected across recent political coverage.";
+    return "В текущей выборке заметны разные фреймы и нарративные гипотезы.";
   }
   if (articles.some((article) => !article.has_analysis)) {
-    return "Several articles still need LLM analysis before narrative confidence can stabilize.";
+    return "Часть материалов еще нужно проанализировать, прежде чем сравнение будет надежным.";
   }
-  return articles.length ? "Coverage is ready for graph inspection and cross-source comparison." : "No coverage loaded for the current filter.";
+  return articles.length ? "Материалы готовы для поиска похожих, графа связей и сравнения." : "В текущем фильтре нет материалов.";
+}
+
+function articleReadinessLabel(article: ArticleListItem) {
+  return article.has_analysis ? "анализ готов" : "без анализа";
 }
 
 function average(values: number[]) {

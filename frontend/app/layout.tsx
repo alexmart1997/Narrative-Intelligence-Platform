@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Narrative Intelligence",
-  description: "Локальный прототип платформы для анализа нарративов."
+  description: "Локальный инструмент для анализа статей, похожих материалов, графов связей и сравнения освещения."
 };
 
 export default function RootLayout({
