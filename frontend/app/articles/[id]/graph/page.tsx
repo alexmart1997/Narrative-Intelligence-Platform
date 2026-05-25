@@ -184,7 +184,7 @@ export default function ArticleGraphPage() {
         </div>
         <div className={styles.headerActions}>
           <span className={styles.stats}>
-            {graph ? `${graph.nodes.length} узлов · ${graph.edges.length} связей · ${relatedCount} связанных статей` : "3D граф"}
+            {graph ? `${graph.nodes.length} узлов · ${relatedCount} похожих · ${filters.showWeakEdges ? "все связи" : "ключевые связи"}` : "3D граф"}
           </span>
           <button onClick={() => sceneApiRef.current?.resetView()} disabled={!graph || loading}>
             Сброс

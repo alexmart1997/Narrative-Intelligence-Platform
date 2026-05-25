@@ -33,7 +33,7 @@ export function GraphControls({
       </label>
       <label>
         <input type="checkbox" checked={filters.showWeakEdges} onChange={(event) => updateFilter("showWeakEdges", event.target.checked)} />
-        слабые связи
+        все связи
       </label>
       <label>
         уверенность

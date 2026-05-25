@@ -24,6 +24,7 @@ export function applyGraphFilters(
     if (!allowedNodeIds.has(edge.source) || !allowedNodeIds.has(edge.target)) return false;
     const strength = edgeStrength(edge);
     if (!filters.showWeakEdges && strength < 0.5) return false;
+    if (!filters.showWeakEdges && !isBackboneEdge(edge, graph)) return false;
     return strength >= filters.confidenceThreshold;
   });
 
@@ -42,6 +43,55 @@ export function buildNeighborMap(edges: GraphEdge[]) {
     map.get(edge.target)?.add(edge.source);
   }
   return map;
+}
+
+function isBackboneEdge(edge: GraphEdge, graph: ArticleGraphResponse) {
+  const activeArticleId = graph.nodes.find((node) => node.type === "article" && node.id.startsWith("article_"))?.id;
+  if (!activeArticleId) return true;
+
+  // По умолчанию не рисуем служебные связи похожих статей: они есть в данных,
+  // но на общей карте превращаются в визуальную паутину.
+  if (edge.data.related_context && edge.label !== "similar_to" && edge.label !== "same_event_as") {
+    return false;
+  }
+
+  if (edge.label === "similar_to" || edge.label === "same_event_as" || edge.label === "shares_narrative") {
+    return true;
+  }
+
+  if (edge.source !== activeArticleId && edge.target !== activeArticleId) {
+    return false;
+  }
+
+  if (edge.label === "published_by" || edge.label === "supports_narrative") {
+    return true;
+  }
+
+  if (edge.label === "sympathizes_with" || edge.label === "criticizes") {
+    return true;
+  }
+
+  if (edge.label === "mentions") {
+    const importantMentionTargets = topMentionTargetsForArticle(graph.edges, activeArticleId);
+    const hasSemanticEdge = graph.edges.some((candidate) => (
+      candidate.source === edge.source
+      && candidate.target === edge.target
+      && candidate.label !== "mentions"
+    ));
+    return !hasSemanticEdge && importantMentionTargets.has(edge.target);
+  }
+
+  return false;
+}
+
+function topMentionTargetsForArticle(edges: GraphEdge[], articleId: string) {
+  return new Set(
+    edges
+      .filter((edge) => edge.source === articleId && edge.label === "mentions")
+      .sort((left, right) => edgeStrength(right) - edgeStrength(left))
+      .slice(0, 4)
+      .map((edge) => edge.target)
+  );
 }
 
 export function buildSceneNodes(graph: ArticleGraphResponse, activeArticleId: number, mode: GraphMode): SceneNode[] {
