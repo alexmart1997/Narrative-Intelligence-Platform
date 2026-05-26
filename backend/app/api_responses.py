@@ -14,6 +14,7 @@ from app.schemas import (
     NarrativeDetailResponse,
     NarrativeEvidenceItem,
 )
+from app.text_normalization import normalize_russian_text
 
 
 def analysis_response(analysis: ArticleAnalysis) -> ArticleAnalysisResponse:
@@ -22,9 +23,9 @@ def analysis_response(analysis: ArticleAnalysis) -> ArticleAnalysisResponse:
     entities = [
         AnalysisEntityItem(
             id=item.entity.id,
-            name=item.entity.name,
+            name=normalize_russian_text(item.entity.name),
             type=item.entity.type.value,
-            role=item.role,
+            role=normalize_russian_text(item.role) if item.role else item.role,
             importance_score=item.importance_score,
         )
         for item in analysis.article.entities
@@ -32,10 +33,10 @@ def analysis_response(analysis: ArticleAnalysis) -> ArticleAnalysisResponse:
     relations = [
         AnalysisRelationItem(
             id=relation.id,
-            source=relation.source_entity.name,
-            target=relation.target_entity.name,
-            relation_type=relation.relation_type,
-            description=relation.description,
+            source=normalize_russian_text(relation.source_entity.name),
+            target=normalize_russian_text(relation.target_entity.name),
+            relation_type=normalize_russian_text(relation.relation_type),
+            description=normalize_russian_text(relation.description),
             confidence=relation.confidence,
         )
         for relation in analysis.article.relations
@@ -44,14 +45,14 @@ def analysis_response(analysis: ArticleAnalysis) -> ArticleAnalysisResponse:
     return ArticleAnalysisResponse(
         id=analysis.id,
         article_id=analysis.article_id,
-        short_summary=analysis.short_summary,
-        detailed_summary=analysis.detailed_summary,
+        short_summary=normalize_russian_text(analysis.short_summary),
+        detailed_summary=normalize_russian_text(analysis.detailed_summary),
         sentiment=analysis.sentiment.value,
-        stance=analysis.stance,
-        framing=analysis.framing,
-        sympathizes_with=_json_list(analysis.sympathizes_with),
-        criticizes=_json_list(analysis.criticizes),
-        narrative_hypothesis=analysis.narrative_hypothesis,
+        stance=normalize_russian_text(analysis.stance),
+        framing=normalize_russian_text(analysis.framing),
+        sympathizes_with=[normalize_russian_text(item) for item in _json_list(analysis.sympathizes_with)],
+        criticizes=[normalize_russian_text(item) for item in _json_list(analysis.criticizes)],
+        narrative_hypothesis=normalize_russian_text(analysis.narrative_hypothesis),
         confidence=analysis.confidence,
         entities=entities,
         relations=relations,
@@ -70,9 +71,9 @@ def group_evidence(evidence_items: list[AnalysisEvidence]) -> dict[str, list[Ana
                 article_id=item.article_id,
                 analysis_id=item.analysis_id,
                 evidence_type=item.evidence_type,
-                target=item.target,
+                target=normalize_russian_text(item.target),
                 quote=item.quote,
-                explanation=item.explanation,
+                explanation=normalize_russian_text(item.explanation),
                 confidence=item.confidence,
                 created_at=item.created_at,
             )
@@ -85,16 +86,16 @@ def narrative_response(narrative: Narrative) -> NarrativeDetailResponse:
 
     return NarrativeDetailResponse(
         id=narrative.id,
-        title=narrative.title,
-        description=narrative.description,
-        frame=narrative.frame,
+        title=normalize_russian_text(narrative.title),
+        description=normalize_russian_text(narrative.description),
+        frame=normalize_russian_text(narrative.frame),
         created_at=narrative.created_at,
         evidence=[
             NarrativeEvidenceItem(
                 article_id=evidence.article_id,
                 article_title=evidence.article.title,
                 source_name=evidence.article.source.name if evidence.article.source else "unknown",
-                evidence_text=evidence.evidence_text,
+                evidence_text=normalize_russian_text(evidence.evidence_text),
                 confidence=evidence.confidence,
             )
             for evidence in narrative.evidence

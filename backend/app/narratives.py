@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.analysis import AnalysisError, parse_llm_json
 from app.llm import LlmError, call_llm
 from app.models import ArticleAnalysis, Narrative, NarrativeEvidence
+from app.text_normalization import normalize_russian_text
 from app.vector import get_embedding_model
 
 
@@ -54,9 +55,9 @@ def discover_narratives(db: Session) -> dict[str, int]:
     for cluster in clusters:
         narrative_data = _summarize_cluster(cluster)
         narrative = Narrative(
-            title=_string(narrative_data.get("title"), "Untitled narrative")[:255],
-            description=_string(narrative_data.get("description"), ""),
-            frame=_string(narrative_data.get("frame"), ""),
+            title=normalize_russian_text(_string(narrative_data.get("title"), "Untitled narrative"))[:255],
+            description=normalize_russian_text(_string(narrative_data.get("description"), "")),
+            frame=normalize_russian_text(_string(narrative_data.get("frame"), "")),
         )
         db.add(narrative)
         db.flush()
@@ -168,7 +169,7 @@ def build_narrative_graph(db: Session, narrative_id: int) -> dict[str, list[dict
 
 def _build_hypothesis_items(analyses: list[ArticleAnalysis]) -> list[HypothesisItem]:
     model = get_embedding_model()
-    hypotheses = [analysis.narrative_hypothesis.strip() for analysis in analyses]
+    hypotheses = [normalize_russian_text(analysis.narrative_hypothesis.strip()) for analysis in analyses]
     vectors = model.encode(hypotheses, normalize_embeddings=True)
     return [
         HypothesisItem(
@@ -214,7 +215,7 @@ def _build_narrative_prompt(cluster: list[HypothesisItem]) -> str:
     )
     return f"""
 Ты аналитик политических нарративов. Ниже список похожих гипотез нарратива из разных статей.
-Обобщи их в один общий нарратив и верни СТРОГО один JSON без markdown и текста вокруг.
+Обобщи их в один устойчивый, переиспользуемый нарратив и верни СТРОГО один JSON без markdown и текста вокруг.
 Все текстовые значения JSON пиши на русском языке, даже если гипотезы частично на английском.
 
 Формат JSON:
@@ -226,11 +227,14 @@ def _build_narrative_prompt(cluster: list[HypothesisItem]) -> str:
 }}
 
 Правила:
-- title должен быть коротким и понятным.
-- description объясняет общий смысл нарратива.
+- title должен быть короткой формулой нарратива, 4-9 слов.
+- title не должен быть пересказом конкретной новости.
+- description объясняет общий смысл нарратива и почему разные статьи попали в один кластер.
 - frame описывает фрейм, через который подается событие или тема.
 - confidence число от 0 до 1.
 - Не добавляй факты, которых нет в гипотезах.
+- Обобщай частные эпизоды до смысловой линии: безопасность, суверенитет, кризис управления, гуманитарные последствия, экономическое давление и т.д.
+- Не используй странные кальки: "Strait of Hormuz" переводи как "Ормузский пролив".
 
 Гипотезы:
 {hypotheses}

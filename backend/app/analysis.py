@@ -18,6 +18,7 @@ from app.models import (
     Relation,
     Sentiment,
 )
+from app.text_normalization import normalize_analysis_payload, normalize_russian_text
 
 
 class AnalysisError(Exception):
@@ -37,7 +38,7 @@ def analyze_article(db: Session, article_id: int) -> ArticleAnalysis:
     except LlmError as exc:
         raise AnalysisError(str(exc)) from exc
 
-    data = parse_llm_json(raw_response)
+    data = normalize_analysis_payload(parse_llm_json(raw_response))
     validate_analysis_payload(data)
     analysis = save_analysis(db, article, data)
 
@@ -58,7 +59,7 @@ def build_analysis_prompt(article: Article) -> str:
     # длинные статьи резко замедляют Ollama и блокируют массовую обработку.
     text = article.text[:5000]
     return f"""
-Ты аналитик политических новостей. Проанализируй статью и верни СТРОГО один JSON без markdown, комментариев и текста вокруг.
+Ты аналитик политических новостей и медианарративов. Проанализируй статью и верни СТРОГО один JSON без markdown, комментариев и текста вокруг.
 Все текстовые значения JSON пиши на русском языке. Если статья на английском, переведи смысл выводов на русский.
 
 Нужно определить:
@@ -68,7 +69,16 @@ def build_analysis_prompt(article: Article) -> str:
 - кто показан отрицательно;
 - кому симпатизирует текст;
 - какой фрейм используется;
-- какой нарратив может продвигаться.
+- какой устойчивый нарратив может продвигаться.
+
+Важно:
+- summary отвечает на вопрос "что произошло";
+- framing отвечает на вопрос "через какую рамку это подано";
+- narrative_hypothesis отвечает на вопрос "какую повторяемую смысловую линию текст укрепляет".
+
+narrative_hypothesis НЕ должен быть пересказом статьи.
+Он должен быть обобщенной формулой нарратива, пригодной для группировки многих статей.
+Пиши его как короткую аналитическую гипотезу, а не как новостной заголовок.
 
 Формат JSON строго такой:
 {{
@@ -115,7 +125,11 @@ def build_analysis_prompt(article: Article) -> str:
 - confidence и importance_score должны быть числами от 0 до 1.
 - short_summary: максимум 2 предложения.
 - detailed_summary: максимум 5 предложений.
-- stance, framing, narrative_hypothesis: по одному компактному абзацу.
+- stance и framing: по одному компактному абзацу.
+- narrative_hypothesis: 1 короткое предложение на русском, 8-18 слов.
+- narrative_hypothesis должен быть обобщенным: избегай дат, цитат, второстепенных деталей и длинных пересказов.
+- narrative_hypothesis может упоминать главных акторов, только если без них теряется смысл рамки.
+- Не используй странные кальки: "Strait of Hormuz" переводи как "Ормузский пролив", не "Стрит Хормуза".
 - entities: максимум 12 главных сущностей.
 - relations: максимум 8 главных связей.
 - evidence: максимум 8 самых важных фрагментов.
@@ -286,7 +300,7 @@ def _save_entity(db: Session, data: Any) -> Entity | None:
     if not isinstance(data, dict):
         return None
 
-    name = _string(data.get("name"), "").strip()
+    name = normalize_russian_text(_string(data.get("name"), "").strip())
     if not name:
         return None
 

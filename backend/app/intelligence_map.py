@@ -12,10 +12,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import Article, ArticleEntity, ArticleEvent, Source
+from app.text_normalization import normalize_russian_text
 
 
 MAP_WIDTH = 1000
 MAP_HEIGHT = 680
+NARRATIVE_CLUSTER_THRESHOLD = 0.62
 
 
 def build_intelligence_map(
@@ -134,23 +136,40 @@ def _group_by_event_or_narrative(articles: list[Article]) -> list[dict[str, Any]
 
 
 def _group_by_narrative_similarity(articles: list[Article]) -> list[dict[str, Any]]:
+    vectors = _build_article_signal_vectors(articles)
     clusters: list[dict[str, Any]] = []
     for article in articles:
-        hypothesis = article.analysis.narrative_hypothesis if article.analysis else article.title
+        hypothesis = normalize_russian_text(article.analysis.narrative_hypothesis if article.analysis else article.title)
         tokens = _article_signal_tokens(article)
         entity_ids = _top_entity_ids(article)
+        vector = vectors.get(article.id)
         best_cluster = None
         best_score = 0.0
         for cluster in clusters:
             entity_overlap = len(entity_ids & cluster["entity_ids"])
-            score = max(_jaccard(tokens, cluster["tokens"]), min(0.5, entity_overlap * 0.18))
-            if score > best_score:
+            token_score = _jaccard(tokens, cluster["tokens"])
+            entity_score = min(1.0, entity_overlap * 0.28)
+            embedding_score = _cosine_similarity(vector, cluster.get("centroid")) if vector else 0.0
+            if vector and cluster.get("centroid"):
+                # Основной сигнал - смысловая близость embedding, сущности и токены выступают guard rails.
+                score = 0.72 * embedding_score + 0.18 * entity_score + 0.10 * token_score
+                is_contextual_match = embedding_score >= 0.64 or entity_overlap > 0 or token_score >= 0.22
+            else:
+                score = max(token_score, entity_score)
+                is_contextual_match = entity_overlap > 0 or token_score >= 0.22
+            if is_contextual_match and score > best_score:
                 best_cluster = cluster
                 best_score = score
-        if best_cluster and best_score >= 0.14:
+        if best_cluster and best_score >= NARRATIVE_CLUSTER_THRESHOLD:
             best_cluster["articles"].append(article)
             best_cluster["tokens"].update(tokens)
             best_cluster["entity_ids"].update(entity_ids)
+            if vector:
+                best_cluster["centroid"] = _merge_centroid(
+                    best_cluster.get("centroid"),
+                    vector,
+                    len(best_cluster["articles"]),
+                )
             continue
         clusters.append(
             {
@@ -160,6 +179,7 @@ def _group_by_narrative_similarity(articles: list[Article]) -> list[dict[str, An
                 "articles": [article],
                 "tokens": set(tokens),
                 "entity_ids": set(entity_ids),
+                "centroid": vector,
             }
         )
     return [_finalize_cluster(cluster) for cluster in clusters]
@@ -180,9 +200,10 @@ def _finalize_cluster(cluster: dict[str, Any]) -> dict[str, Any]:
         for item in sorted(article.entities, key=lambda entity: entity.importance_score or 0, reverse=True)[:4]:
             entities[item.entity.name] += 1
 
-    label = str(cluster["label"])
+    top_entities = [name for name, _ in entities.most_common(6)]
+    label = normalize_russian_text(str(cluster["label"]))
     if cluster["type"] == "narrative":
-        label = _shorten(label, 120)
+        label = _narrative_cluster_label(label, cluster.get("tokens", set()), top_entities, len(articles))
 
     return {
         "id": cluster["id"],
@@ -191,7 +212,7 @@ def _finalize_cluster(cluster: dict[str, Any]) -> dict[str, Any]:
         "articles": articles,
         "count": len(articles),
         "sources": dict(sources.most_common(5)),
-        "top_entities": [name for name, _ in entities.most_common(6)],
+        "top_entities": top_entities,
         "sentiment": dict(sentiments),
         "color": _cluster_color(cluster["id"]),
     }
@@ -261,9 +282,9 @@ def _article_nodes(clusters: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         "language": article.language,
                         "sentiment": analysis.sentiment.value if analysis else None,
                         "confidence": confidence,
-                        "summary": analysis.short_summary if analysis else article.text[:220],
-                        "framing": analysis.framing if analysis else None,
-                        "narrative_hypothesis": analysis.narrative_hypothesis if analysis else None,
+                        "summary": normalize_russian_text(analysis.short_summary) if analysis else article.text[:220],
+                        "framing": normalize_russian_text(analysis.framing) if analysis else None,
+                        "narrative_hypothesis": normalize_russian_text(analysis.narrative_hypothesis) if analysis else None,
                         "url": article.url,
                     },
                 }
@@ -300,7 +321,7 @@ def _tokens(value: str) -> set[str]:
 
 
 def _article_signal_tokens(article: Article) -> set[str]:
-    hypothesis = article.analysis.narrative_hypothesis if article.analysis else article.title
+    hypothesis = normalize_russian_text(article.analysis.narrative_hypothesis if article.analysis else article.title)
     tokens = set(_tokens(hypothesis))
     for item in sorted(article.entities, key=lambda entity: entity.importance_score or 0, reverse=True)[:6]:
         tokens.update(_tokens(item.entity.name))
@@ -320,10 +341,100 @@ def _jaccard(left: set[str], right: set[str]) -> float:
     return len(left & right) / len(left | right)
 
 
+def _narrative_cluster_label(original: str, tokens: set[str], entities: list[str], count: int) -> str:
+    """Дает карте более абстрактное имя кластера, а не длинное summary одной статьи."""
+
+    if count <= 1:
+        return _shorten(original, 120)
+
+    theme = _theme_from_tokens(tokens) or _shorten(original, 72)
+    actors = [normalize_russian_text(entity) for entity in entities[:2]]
+    if actors:
+        return _shorten(f"{', '.join(actors)}: {theme}", 96)
+    return _shorten(theme, 96)
+
+
+def _theme_from_tokens(tokens: set[str]) -> str | None:
+    token_text = " ".join(tokens)
+    if _has_any(token_text, "регулятор", "фас", "цена", "топлив", "конкуренц"):
+        return "регулирование цен и защита конкуренции"
+    if _has_any(token_text, "эбола", "эпидем", "гуманитар"):
+        return "гуманитарный кризис и слабость инфраструктуры"
+    if _has_any(token_text, "пожар", "мчс", "реагирован"):
+        return "безопасность инфраструктуры и реагирование служб"
+    if _has_any(token_text, "пролив", "энерг") and _has_any(token_text, "соглаш", "переговор", "иран"):
+        return "переговоры и энергетическая безопасность"
+    if _has_any(token_text, "санкц", "постав", "тенев", "оборуд") and _has_any(token_text, "иран", "дрон"):
+        return "обход санкций и теневые поставки"
+    if _has_any(token_text, "бпла", "ата", "обстр", "жертв", "всу"):
+        return "атаки на гражданскую инфраструктуру"
+    if _has_any(token_text, "евросоюз", "диалог") and _has_any(token_text, "росси", "переговор"):
+        return "диалог с Россией и европейская стратегия"
+    if _has_any(token_text, "выбор", "республикан", "демократ") and _has_any(token_text, "трамп", "сенат"):
+        return "внутриполитическая борьба и электоральный фрейм"
+    return None
+
+
+def _has_any(text: str, *needles: str) -> bool:
+    return any(needle in text for needle in needles)
+
+
+def _build_article_signal_vectors(articles: list[Article]) -> dict[int, list[float]]:
+    """Считает embeddings для смысловой кластеризации карты.
+
+    Если локальная модель недоступна, карта не падает, а возвращается к token/entity логике.
+    """
+
+    if not articles:
+        return {}
+    try:
+        from app.vector import get_embedding_model
+
+        model = get_embedding_model()
+        texts = [_narrative_cluster_text(article) for article in articles]
+        vectors = model.encode(texts, normalize_embeddings=True)
+    except Exception:
+        return {}
+    return {
+        article.id: [float(value) for value in vector.tolist()]
+        for article, vector in zip(articles, vectors)
+    }
+
+
+def _narrative_cluster_text(article: Article) -> str:
+    analysis = article.analysis
+    entity_names = [
+        item.entity.name
+        for item in sorted(article.entities, key=lambda entity: entity.importance_score or 0, reverse=True)[:6]
+    ]
+    return "\n".join(
+        [
+            normalize_russian_text(analysis.narrative_hypothesis if analysis else article.title),
+            normalize_russian_text(analysis.framing if analysis else ""),
+            "Участники: " + ", ".join(entity_names),
+        ]
+    )
+
+
+def _merge_centroid(current: list[float] | None, vector: list[float], new_count: int) -> list[float]:
+    if current is None or len(current) != len(vector):
+        return vector
+    previous_count = max(new_count - 1, 1)
+    merged = [((left * previous_count) + right) / new_count for left, right in zip(current, vector)]
+    norm = math.sqrt(sum(value * value for value in merged)) or 1.0
+    return [value / norm for value in merged]
+
+
+def _cosine_similarity(left: list[float] | None, right: list[float] | None) -> float:
+    if not left or not right or len(left) != len(right):
+        return 0.0
+    return sum(a * b for a, b in zip(left, right))
+
+
 def _article_display_label(article: Article) -> str:
     if article.language == "ru" or not article.analysis:
-        return article.title
-    return article.analysis.short_summary or article.title
+        return normalize_russian_text(article.title)
+    return normalize_russian_text(article.analysis.short_summary or article.title)
 
 
 def _shorten(value: str, limit: int) -> str:

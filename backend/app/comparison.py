@@ -9,6 +9,7 @@ from app.analysis import AnalysisError, parse_llm_json
 from app.article_similarity import SIMILARITY_GUARD_VERSION
 from app.llm import LlmError, call_llm
 from app.models import Article
+from app.text_normalization import normalize_russian_text
 from app.vector import VectorError, find_similar_articles
 
 
@@ -31,7 +32,7 @@ def compare_articles(db: Session, article_id_1: int, article_id_2: int) -> dict[
     except LlmError as exc:
         raise ComparisonError(str(exc)) from exc
 
-    data = parse_llm_json(raw_response)
+    data = _normalize_compare_payload(parse_llm_json(raw_response))
     validate_compare_payload(data)
     return data
 
@@ -102,6 +103,7 @@ def build_compare_prompt(article_1: Article, article_2: Article) -> str:
 - same_event_probability и fact_overlap должны быть числами от 0 до 1.
 - Если статьи о разных событиях, same_event_probability должен быть низким.
 - Используй только данные из статей и их анализа.
+- Не используй странные кальки: "Strait of Hormuz" переводи как "Ормузский пролив".
 
 СТАТЬЯ 1
 Источник: {_source_name(article_1)}
@@ -153,6 +155,30 @@ def validate_compare_payload(data: dict[str, Any]) -> None:
         if not isinstance(data.get(field), list):
             raise ComparisonError(f"Поле '{field}' должно быть массивом")
         data[field] = [item for item in data[field] if isinstance(item, str)]
+
+
+def _normalize_compare_payload(data: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(data)
+    for field in [
+        "source_1_framing",
+        "source_2_framing",
+        "source_1_sympathy",
+        "source_2_sympathy",
+        "source_1_criticism",
+        "source_2_criticism",
+        "narrative_difference",
+        "conclusion",
+    ]:
+        if isinstance(normalized.get(field), str):
+            normalized[field] = normalize_russian_text(normalized[field])
+    for field in ["main_common_facts", "differences"]:
+        if isinstance(normalized.get(field), list):
+            normalized[field] = [
+                normalize_russian_text(item)
+                for item in normalized[field]
+                if isinstance(item, str)
+            ]
+    return normalized
 
 
 def _get_article_with_analysis(db: Session, article_id: int) -> Article:
