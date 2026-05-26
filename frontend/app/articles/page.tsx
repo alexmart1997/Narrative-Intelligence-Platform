@@ -2,6 +2,7 @@
 
 import type { FormEvent } from "react";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArticleAnalysisResponse,
@@ -233,6 +234,9 @@ function ArticlesContent() {
             <span>Поиск по статьям, участникам, фреймам и темам...</span>
             <kbd>Cmd K</kbd>
           </button>
+          <div className={styles.quickActions}>
+            <Link href="/map">Карта информационного поля</Link>
+          </div>
         </div>
       </section>
 
@@ -499,6 +503,7 @@ function CommandPalette({
         </div>
         <div className={styles.paletteGroup}>
           <button onClick={() => onNavigate("/articles")}>Статьи</button>
+          <button onClick={() => onNavigate("/map")}>Карта информационного поля</button>
           {matches[0] ? (
             <>
               <button onClick={() => onNavigate(`/articles/${matches[0].id}/graph`)}>Граф первого совпадения</button>

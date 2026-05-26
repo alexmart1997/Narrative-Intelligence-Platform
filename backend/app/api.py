@@ -20,6 +20,7 @@ from app.events import (
 )
 from app.graph import GraphError, build_article_graph
 from app.http_errors import comparison_http_error, event_http_error, narrative_http_error, vector_http_error
+from app.intelligence_map import build_intelligence_map
 from app.config import settings
 from app.ingestion.service import ingest_source_period, query_articles, supported_sources
 from app.jobs import JobError, cancel_job, enqueue_job, get_job_or_raise, job_to_dict, list_jobs
@@ -42,6 +43,7 @@ from app.schemas import (
     CompareWithSimilarResponse,
     IngestSourcePeriodRequest,
     IngestSourcePeriodResponse,
+    IntelligenceMapResponse,
     JobAnalyzeRequest,
     JobPipelineRequest,
     JobResponse,
@@ -413,6 +415,29 @@ def article_graph_endpoint(
         message = str(exc)
         status_code = 404 if message == "Статья не найдена" else 400
         raise HTTPException(status_code=status_code, detail=message) from exc
+
+
+@router.get("/graph/map", response_model=IntelligenceMapResponse)
+def intelligence_map_endpoint(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    source_code: Optional[str] = None,
+    language: Optional[str] = None,
+    mode: str = Query(default="narratives", pattern="^(narratives|events|sources)$"),
+    limit: int = Query(default=300, ge=20, le=500),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    """Возвращает обзорную карту корпуса: точки статей и облака кластеров."""
+
+    return build_intelligence_map(
+        db=db,
+        date_from=date_from,
+        date_to=date_to,
+        source_code=source_code,
+        language=language,
+        mode=mode,
+        limit=limit,
+    )
 
 
 @router.post("/pipeline/precompute-intelligence", response_model=PrecomputeResponse)

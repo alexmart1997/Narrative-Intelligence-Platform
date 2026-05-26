@@ -197,6 +197,14 @@ class ArticleGraphResponse(BaseModel):
     edges: list[GraphEdge]
 
 
+class IntelligenceMapResponse(BaseModel):
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
+    clusters: list[dict]
+    stats: dict
+    period: dict
+
+
 class NarrativeDiscoveryResponse(BaseModel):
     total_analyses: int
     clusters: int

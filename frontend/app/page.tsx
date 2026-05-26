@@ -28,6 +28,7 @@ export default function Home() {
           </p>
           <nav className={styles.actions} aria-label="Основные разделы">
             <Link className={styles.primary} href="/articles">Открыть рабочее пространство</Link>
+            <Link href="/map">Карта поля</Link>
           </nav>
         </div>
 
