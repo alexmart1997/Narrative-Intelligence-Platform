@@ -1,24 +1,120 @@
 # Narrative Intelligence Platform
 
-Локальный прототип платформы для анализа нарративов. Проект не использует платные API: LLM предполагается запускать локально через Ollama, данные хранятся в PostgreSQL, векторное хранилище работает через Qdrant.
+Narrative Intelligence Platform - локальная AI-платформа для анализа новостного потока, смыслового поиска и выявления нарративов в политических и общественно значимых медиа.
+
+Проект помогает перейти от обычного списка публикаций к аналитической картине: какие события обсуждаются, какие участники и организации фигурируют в материалах, как разные источники подают один сюжет, какие фреймы повторяются и какие нарративы формируются в корпусе новостей.
+
+## Идея продукта
+
+Классический мониторинг СМИ показывает, что, где и когда было опубликовано. Narrative Intelligence Platform добавляет смысловой слой поверх новостного потока:
+
+- превращает статьи в структурированные аналитические объекты;
+- выделяет краткое и подробное резюме, тональность, позицию, фрейминг и гипотезу нарратива;
+- извлекает сущности, роли и отношения между участниками сюжета;
+- сохраняет evidence-цитаты, которые объясняют выводы модели;
+- ищет действительно похожие материалы через embeddings и hybrid similarity;
+- сравнивает освещение одного события разными источниками;
+- объединяет статьи в события и нарративы;
+- строит графы связей между статьями, источниками, сущностями, событиями и нарративами;
+- показывает обзорную карту информационного поля по нарративам, событиям или источникам.
+
+Платформа ориентирована на аналитиков медиа и коммуникаций, исследователей политических процессов, редакции, fact-check команды, PR/GR-специалистов и исследовательские группы, которым важны локальная обработка, объяснимость и контроль над данными.
+
+## Что реализовано
+
+В текущей версии это рабочий end-to-end прототип:
+
+- загрузка материалов из источников RBC, BBC и CNN;
+- хранение статей, анализов, сущностей, отношений, событий, нарративов и evidence в PostgreSQL;
+- LLM-анализ статьи через локальный Ollama API;
+- evidence layer с проверяемыми цитатами из текста;
+- multilingual embeddings через `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`;
+- Qdrant для векторного поиска похожих публикаций;
+- сравнение двух статей и сравнение статьи с top-N похожими материалами;
+- слой событий, который объединяет несколько публикаций в один сюжет;
+- слой нарративов по `narrative_hypothesis` из LLM-анализов;
+- source profile analytics для анализа повторяющихся фреймов, сущностей и тональности у источника;
+- локальные background jobs и batch pipeline для массовой обработки;
+- precompute cache для быстрого открытия графов, похожих материалов и сравнений в UI;
+- Next.js-интерфейс с разделами Articles, Events, Narratives, Source Profile, Graph, Compare и Intelligence Map.
+
+## Основные сценарии
+
+### Анализ статьи
+
+Статья превращается в аналитическую карточку. Система сохраняет summary, sentiment, stance, framing, sympathizes_with, criticizes, narrative_hypothesis, confidence, сущности, отношения и evidence-цитаты.
+
+### Поиск похожих материалов
+
+Похожие статьи ищутся не только по embedding. В расчете используются semantic similarity, пересечение сущностей, keyword overlap, близость дат и guard против ложных совпадений на слишком общих темах.
+
+### Сравнение освещения
+
+Платформа сравнивает две публикации и показывает вероятность одного события, совпадающие факты, различия, фрейминг каждого источника, симпатии, критику, различие нарративов и аналитический вывод.
+
+### Граф связей
+
+Граф показывает связи между статьей, источником, персонами, организациями, странами, концептами, событиями, похожими публикациями и нарративами. Это помогает исследовать сюжет не линейно, а как сеть смысловых отношений.
+
+### Карта информационного поля
+
+Раздел Intelligence Map показывает корпус как карту: точка - статья, облако - кластер нарратива, события или источника. Размер облака отражает плотность материалов, а инспектор помогает быстро понять состав кластера.
+
+## Архитектура
+
+```text
+Source adapters
+      |
+      v
+FastAPI backend ---- PostgreSQL
+      |                  |
+      |                  +-- articles, analyses, entities, relations
+      |                  +-- events, narratives, evidence, jobs, cache
+      |
+      +---- Ollama / local LLM
+      |
+      +---- sentence-transformers
+      |
+      +---- Qdrant vector DB
+      |
+      v
+Next.js frontend
+```
+
+Пайплайн обработки:
+
+1. Адаптер источника загружает материалы за выбранный период.
+2. PostgreSQL сохраняет статьи и метаданные.
+3. Локальная LLM анализирует текст и возвращает структурированный JSON.
+4. Backend сохраняет анализ, сущности, отношения и evidence.
+5. Embedding-модель строит векторы статей.
+6. Qdrant возвращает кандидатов похожих материалов.
+7. Hybrid similarity и LLM-сравнение уточняют смысловые связи.
+8. Frontend показывает статьи, сравнения, графы, события, нарративы и карту корпуса.
 
 ## Стек
 
-- Backend: Python + FastAPI
-- Frontend: Next.js + TypeScript
+- Backend: Python, FastAPI, SQLAlchemy, Alembic
+- Frontend: Next.js 14, React, TypeScript
 - Database: PostgreSQL
 - Vector DB: Qdrant
-- LLM: локальный Ollama API
-- Запуск: локально на MacBook, Docker только для инфраструктуры
+- LLM runtime: локальный Ollama API
+- Embeddings: sentence-transformers
+- Graph UI: Three.js / Cytoscape-related types and graph components
+- Local infrastructure: Docker Compose
 
-## Структура
+Проект не требует платных LLM API: анализ выполняется локально через Ollama.
+
+## Структура репозитория
 
 ```text
 .
-├── backend
-├── frontend
-├── docker-compose.yml
-├── .env.example
+├── backend/                 # FastAPI API, модели, миграции, пайплайны
+├── frontend/                # Next.js приложение
+├── docs/                    # презентационные материалы и план развития
+├── outputs/                 # результаты внутренней оценки
+├── docker-compose.yml       # PostgreSQL и Qdrant
+├── .env.example             # пример переменных окружения
 └── README.md
 ```
 
@@ -29,15 +125,17 @@
 - Docker Desktop
 - Ollama
 
-## Первый запуск
+## Быстрый запуск
 
-1. Создайте локальный env-файл:
+### 1. Подготовить env
 
 ```bash
 cp .env.example .env
 ```
 
-2. Запустите PostgreSQL и Qdrant:
+При необходимости измените параметры PostgreSQL, Qdrant и Ollama в `.env`.
+
+### 2. Запустить инфраструктуру
 
 ```bash
 docker compose up -d
@@ -49,131 +147,84 @@ docker compose up -d
 curl http://localhost:6333/healthz
 ```
 
-3. Установите зависимости backend:
+### 3. Подготовить backend
 
 ```bash
 cd backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-4. Примените миграции PostgreSQL:
-
-```bash
 alembic upgrade head
-```
-
-5. Запустите backend:
-
-```bash
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Проверка:
+Проверка backend:
 
 ```bash
 curl http://localhost:8000/health
 ```
 
-6. В отдельном терминале установите зависимости frontend:
-
-```bash
-cd frontend
-cp .env.local.example .env.local
-npm install
-```
-
-7. Запустите frontend:
-
-```bash
-npm run dev
-```
-
-Откройте `http://localhost:3000`.
-
-## Ollama
-
-Backend обращается только к локальному Ollama API, платные API не используются.
-
-1. Установите Ollama: скачайте приложение с официального сайта Ollama и запустите его.
-
-2. Скачайте локальную модель:
+### 4. Подготовить Ollama
 
 ```bash
 ollama pull qwen3:4b
 ```
 
-3. Проверьте настройки в `.env`:
+Проверьте `.env`:
 
 ```bash
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=qwen3:4b
 ```
 
-4. Запустите backend:
-
-```bash
-cd backend
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-5. Проверьте `/llm/test`:
+Проверка связи backend с LLM:
 
 ```bash
 curl -X POST http://localhost:8000/llm/test \
   -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "Кратко объясни, что такое фрейминг в политических новостях."
-  }'
+  -d '{"prompt":"Кратко объясни, что такое фрейминг в политических новостях."}'
 ```
 
-Если Ollama не запущен или модель не скачана, backend вернет понятную ошибку с HTTP-статусом `503`.
+### 5. Запустить frontend
+
+```bash
+cd frontend
+cp .env.local.example .env.local
+npm install
+npm run dev
+```
+
+Откройте `http://localhost:3000`.
 
 ## Локальные сервисы
 
-- Backend: `http://localhost:8000`
 - Frontend: `http://localhost:3000`
+- Backend: `http://localhost:8000`
 - PostgreSQL: `localhost:5432`
 - Qdrant REST API: `http://localhost:6333`
+- Ollama: `http://localhost:11434`
 
-## Frontend dashboard
+## Основные разделы интерфейса
 
-Главная страница `http://localhost:3000/articles` оформлена как premium intelligence command center:
+- `/` - стартовая страница продукта;
+- `/articles` - рабочее пространство со статьями, фильтрами, поиском, анализом и похожими материалами;
+- `/articles/{id}/analysis` - подробный LLM-анализ статьи;
+- `/articles/{id}/compare` - сравнение статьи с похожими публикациями;
+- `/articles/{id}/graph` - граф связей статьи;
+- `/events` и `/events/{id}` - события и связанные публикации;
+- `/narratives` и `/narratives/{id}/graph` - найденные нарративы и их графы;
+- `/sources/{code}/profile` - аналитический профиль источника;
+- `/map` - карта информационного поля.
 
-- верхняя command bar с глобальным поиском, быстрыми действиями и переключателем плотности;
-- карточки метрик по статьям, событиям, источникам, нарративам, необработанным материалам и средней уверенности;
-- timeline strip по дням публикации;
-- dark intelligence feed с карточками статей, analysis summary, sentiment, framing, narrative hypothesis и top entities;
-- правая insight panel с event spotlight, top narratives, source mix и AI insight callout;
-- фильтры по source, date range, language, material type, status, sentiment и search query;
-- command palette по `Cmd+K` для быстрого поиска и переходов.
+## Примеры API-сценариев
 
-Если часть данных еще не рассчитана backend-ом, dashboard показывает graceful fallback и не ломает основной список статей.
-
-## Миграции БД
-
-Миграции лежат в `backend/alembic`. Команды выполняются из папки `backend` с активированным виртуальным окружением:
-
-```bash
-alembic upgrade head
-```
-
-Создать новую миграцию после изменения моделей:
-
-```bash
-alembic revision --autogenerate -m "describe changes"
-```
-
-## Загрузка материалов
-
-Доступные источники:
+### Доступные источники
 
 ```bash
 curl http://localhost:8000/ingest/sources
 ```
 
-Загрузить РБК за 1-30 мая 2026:
+### Загрузка материалов за период
 
 ```bash
 curl -X POST http://localhost:8000/ingest/source-period \
@@ -186,84 +237,81 @@ curl -X POST http://localhost:8000/ingest/source-period \
   }'
 ```
 
-Загрузить BBC за 1-30 мая 2026:
+Поддерживаемые `source_code`: `rbc`, `bbc`, `cnn`.
 
-```bash
-curl -X POST http://localhost:8000/ingest/source-period \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source_code": "bbc",
-    "date_from": "2026-05-01",
-    "date_to": "2026-05-30",
-    "limit": 500
-  }'
-```
-
-Загрузить CNN за 1-30 мая 2026:
-
-```bash
-curl -X POST http://localhost:8000/ingest/source-period \
-  -H "Content-Type: application/json" \
-  -d '{
-    "source_code": "cnn",
-    "date_from": "2026-05-01",
-    "date_to": "2026-05-30",
-    "limit": 500
-  }'
-```
-
-Посмотреть загруженные статьи:
+### Список статей
 
 ```bash
 curl "http://localhost:8000/articles?source_code=rbc&date_from=2026-05-01&date_to=2026-05-30&limit=50"
 ```
 
-Поиск по заголовку и тексту:
-
-```bash
-curl "http://localhost:8000/articles?q=election&language=en&limit=20"
-```
-
-## LLM-анализ статьи
-
-Запустить анализ загруженной статьи:
+### Анализ статьи
 
 ```bash
 curl -X POST http://localhost:8000/articles/1/analyze
-```
-
-Посмотреть сохраненный анализ:
-
-```bash
 curl http://localhost:8000/articles/1/analysis
-```
-
-Посмотреть доказательства выводов анализа:
-
-```bash
 curl http://localhost:8000/articles/1/evidence
 ```
 
-Backend отправляет текст статьи в локальный Ollama, ожидает структурированный JSON, сохраняет резюме, тональность, stance, framing, гипотезу нарратива, сущности, отношения и evidence-цитаты. Evidence хранит короткие фрагменты текста, которые объясняют выводы по framing, sympathy, criticism, narrative и другим типам. Если модель вернет текст вокруг JSON, backend попробует извлечь JSON автоматически. Если JSON невалидный, API вернет понятную ошибку. Если отдельные evidence-элементы невалидны или цитата не найдена в тексте статьи, backend просто пропустит их.
-
-## Batch pipeline
-
-Для массовой локальной обработки статей есть простой batch pipeline без Celery и очередей. Он последовательно проходит по выбранным статьям и не останавливает весь запуск, если отдельная статья упала.
-
-Загрузить статьи можно через ingestion endpoint:
+### Embeddings и похожие статьи
 
 ```bash
-curl -X POST http://localhost:8000/ingest/source-period \
+curl -X POST http://localhost:8000/articles/1/embed
+curl -X POST http://localhost:8000/articles/embed-all
+curl "http://localhost:8000/articles/1/similar?limit=10"
+```
+
+### Сравнение статей
+
+```bash
+curl -X POST http://localhost:8000/compare/articles \
   -H "Content-Type: application/json" \
   -d '{
-    "source_code": "rbc",
-    "date_from": "2026-05-01",
-    "date_to": "2026-05-30",
-    "limit": 100
+    "article_id_1": 1,
+    "article_id_2": 2
   }'
 ```
 
-Массово проанализировать, векторизовать и привязать события:
+```bash
+curl http://localhost:8000/articles/1/compare-with-similar
+```
+
+### События
+
+```bash
+curl -X POST http://localhost:8000/articles/1/detect-event
+curl -X POST http://localhost:8000/events/detect-all
+curl "http://localhost:8000/events"
+curl http://localhost:8000/events/1
+curl http://localhost:8000/graph/event/1
+```
+
+### Нарративы
+
+```bash
+curl -X POST http://localhost:8000/narratives/discover
+curl http://localhost:8000/narratives
+curl http://localhost:8000/narratives/1
+curl http://localhost:8000/graph/narrative/1
+```
+
+### Граф статьи и карта корпуса
+
+```bash
+curl "http://localhost:8000/graph/article/1?include_related=true&limit_related=10"
+curl "http://localhost:8000/graph/map?mode=narratives&limit=300"
+```
+
+### Source Profile Analytics
+
+```bash
+curl "http://localhost:8000/sources/rbc/profile"
+curl "http://localhost:8000/sources/rbc/profile?date_from=2026-05-01&date_to=2026-05-30&language=ru"
+```
+
+## Batch pipeline и фоновые задачи
+
+Для массовой локальной обработки статей есть batch pipeline без Celery и Redis:
 
 ```bash
 curl -X POST http://localhost:8000/pipeline/process-articles \
@@ -279,25 +327,13 @@ curl -X POST http://localhost:8000/pipeline/process-articles \
   }'
 ```
 
-Для быстрой проверки без LLM можно запустить только embedding на одной уже проанализированной статье:
-
-```bash
-curl -X POST http://localhost:8000/pipeline/process-articles \
-  -H "Content-Type: application/json" \
-  -d '{
-    "only_without_analysis": false,
-    "limit": 1,
-    "steps": ["embed"]
-  }'
-```
-
-Проверить последний запуск pipeline:
+Проверка последнего запуска:
 
 ```bash
 curl http://localhost:8000/pipeline/status
 ```
 
-Заранее простроить быстрые данные для UI, чтобы графы и похожие статьи открывались без долгого ожидания:
+Предрасчет данных для быстрого UI:
 
 ```bash
 curl -X POST http://localhost:8000/pipeline/precompute-intelligence \
@@ -313,173 +349,48 @@ curl -X POST http://localhost:8000/pipeline/precompute-intelligence \
   }'
 ```
 
-`include_compare=true` заранее считает также LLM-сравнения с похожими статьями, но это медленнее, потому что вызывает Ollama.
-
-Проверить результаты:
+Локальные jobs доступны через:
 
 ```bash
-curl "http://localhost:8000/articles?limit=20"
-curl "http://localhost:8000/events"
-curl "http://localhost:8000/articles/1/analysis"
+curl http://localhost:8000/jobs
+curl http://localhost:8000/jobs/1
+curl -X POST http://localhost:8000/jobs/1/cancel
 ```
 
-## Source Profile Analytics
+## Миграции БД
 
-Профиль источника показывает, какие сущности, фреймы, нарративы, гипотезы нарратива и тональность чаще встречаются у выбранного СМИ:
+Миграции лежат в `backend/alembic`. Команды выполняются из папки `backend`:
 
 ```bash
-curl "http://localhost:8000/sources/rbc/profile"
+alembic upgrade head
+alembic revision --autogenerate -m "describe changes"
 ```
 
-С фильтрами:
+## Ограничения прототипа
 
-```bash
-curl "http://localhost:8000/sources/rbc/profile?date_from=2026-05-01&date_to=2026-05-30&language=ru"
-```
+- HTML источников может меняться, поэтому адаптеры парсинга требуют поддержки.
+- Часть материалов может быть загружена неполностью из-за ограничений сайтов.
+- Локальная LLM медленнее облачных моделей.
+- Качество нарративов зависит от модели и промта.
+- Сравнение статей требует более дорогих LLM-вызовов, чем embedding search.
+- Текущая версия является исследовательским прототипом, а не промышленным crawling pipeline.
 
-## План развития
+## Документация и материалы
 
-Технический план доведения MVP до профессионального решения лежит в [docs/PROFESSIONALIZATION_PLAN.md](docs/PROFESSIONALIZATION_PLAN.md).
+- [Backend README](backend/README.md)
+- [Frontend README](frontend/README.md)
+- [Текст презентации](docs/PRESENTATION_TEXT.md)
+- [План профессионализации](docs/PROFESSIONALIZATION_PLAN.md)
+- [HTML-презентация](docs/news_intelligence_presentation.html)
 
-Во frontend профиль доступен по адресу:
+## Команда проекта
 
-```text
-http://localhost:3000/sources/rbc/profile
-```
-
-## Векторизация и похожие статьи
-
-Для embeddings используется легкая мультиязычная модель `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`. Она подходит для MacBook и работает с русскими и английскими текстами.
-
-Qdrant запускается через Docker Compose:
-
-```bash
-docker compose up -d qdrant
-```
-
-Первый запуск embedding может занять время: sentence-transformers скачает модель локально.
-
-Создать embedding одной статьи:
-
-```bash
-curl -X POST http://localhost:8000/articles/1/embed
-```
-
-Создать embeddings для всех статей, у которых уже есть LLM-анализ:
-
-```bash
-curl -X POST http://localhost:8000/articles/embed-all
-```
-
-Найти похожие новости:
-
-```bash
-curl "http://localhost:8000/articles/1/similar?limit=10"
-```
-
-Embedding создается по `title + short_summary + text[:3000]`, а в Qdrant payload сохраняет `article_id`, `title`, `source_name`, `published_at`, `language`. Это нужно для сравнения освещения одного события разными изданиями.
-
-## Сравнение статей
-
-Сравнить две статьи через Ollama:
-
-```bash
-curl -X POST http://localhost:8000/compare/articles \
-  -H "Content-Type: application/json" \
-  -d '{
-    "article_id_1": 1,
-    "article_id_2": 2
-  }'
-```
-
-Сравнить статью с top-3 похожими материалами из Qdrant:
-
-```bash
-curl http://localhost:8000/articles/1/compare-with-similar
-```
-
-Перед сравнением у статей должен быть сохраненный LLM-анализ. Для `compare-with-similar` также нужны embeddings в Qdrant.
-
-## Event Intelligence Layer
-
-Слой событий объединяет несколько статей в одно событие. Он работает поверх уже существующего анализа статей, embeddings в Qdrant и локального Ollama.
-
-Перед запуском event matching у статей должен быть LLM-анализ и embedding:
-
-```bash
-curl -X POST http://localhost:8000/articles/1/analyze
-curl -X POST http://localhost:8000/articles/1/embed
-```
-
-Определить событие для одной статьи:
-
-```bash
-curl -X POST http://localhost:8000/articles/1/detect-event
-```
-
-Определить события для всех проанализированных статей:
-
-```bash
-curl -X POST http://localhost:8000/events/detect-all
-```
-
-Посмотреть события:
-
-```bash
-curl "http://localhost:8000/events"
-```
-
-Фильтры событий:
-
-```bash
-curl "http://localhost:8000/events?event_type=politics&q=Молдавия"
-curl "http://localhost:8000/events?date_from=2026-05-01&date_to=2026-05-30"
-```
-
-Посмотреть одно событие:
-
-```bash
-curl http://localhost:8000/events/1
-```
-
-Граф события:
-
-```bash
-curl http://localhost:8000/graph/event/1
-```
-
-Граф статьи можно расширить связанными материалами:
-
-```bash
-curl "http://localhost:8000/graph/article/1?include_related=true&limit_related=10"
-```
-
-В расширенный граф добавляются статьи того же события, похожие статьи из Qdrant и статьи с похожей `narrative_hypothesis`. Связи: `same_event_as`, `similar_to`, `shares_narrative`.
-
-## Граф статьи
-
-Создать тестовые данные для просмотра графа без реальных новостей:
-
-```bash
-cd backend
-PYTHONPATH=. python -m app.seed
-```
-
-Команда выведет `article_id`, который можно открыть графовым endpoint:
-
-```bash
-curl http://localhost:8000/graph/article/12
-```
-
-Граф содержит узлы статьи, источника, сущностей, гипотезы нарратива и связи `published_by`, `mentions`, `relates_to`, `sympathizes_with`, `criticizes`, `supports_narrative`.
-
-### Ограничения MVP-парсеров
-
-- Сайты могут менять HTML, поэтому часть селекторов со временем потребуется обновлять.
-- Часть материалов может не парситься полностью или не иметь доступной даты публикации.
-- Некоторые сайты могут ограничивать доступ, отдавать региональные версии страниц или блокировать частые запросы.
-- Для MVP это нормально: главное сейчас - рабочая архитектура адаптеров, отдельная обработка ошибок по ссылкам и сохранение доступного текста.
-- Если полный текст получить не удалось, backend пытается сохранить хотя бы заголовок и доступный preview/summary.
+- Абиев Марик - Machine Learning Engineer
+- Барабошкина Кристина - Frontend Engineer
+- Варфоломеев Константин - Backend Engineer
+- Владынцев Сергей - Backend Engineer
+- Мартыненко Алексей - Machine Learning Engineer, Product Manager
+- Подгорнов Владислав - Market Analysis & Product Positioning
 
 ## Остановка инфраструктуры
 
